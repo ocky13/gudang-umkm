@@ -8,6 +8,7 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;background:#F8F9FB;color:#1a1d23;font-family:'Inter',sans-serif;font-size:14px}
@@ -357,6 +358,78 @@ const ItemDB=({items,setItems,toast,addLog})=>{
   const [editIdx,setEditIdx]=useState(-1);
   const [saving,setSaving]=useState(false);
   const [showForm,setShowForm]=useState(false);
+  const [importing,setImporting]=useState(false);
+  const [showImportModal,setShowImportModal]=useState(false);
+  const [previewData,setPreviewData]=useState([]);
+  const [importError,setImportError]=useState("");
+  const fileRef=useRef(null);
+
+  const downloadTemplate=()=>{
+    const ws=XLSX.utils.aoa_to_sheet([
+      ["nama","tipe","sat","hpp","hj","min","stok","note"],
+      ["Tepung Terigu","Bahan Baku","kg",8000,0,10,50,""],
+      ["Gula Pasir","Bahan Baku","kg",14000,0,5,30,""],
+      ["Roti Tawar","Produk Jadi","pcs",5000,8000,20,0,""],
+    ]);
+    ws["!cols"]=[{wch:20},{wch:12},{wch:8},{wch:10},{wch:10},{wch:8},{wch:8},{wch:15}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Items");
+    XLSX.writeFile(wb,"template_item.xlsx");
+  };
+
+  const handleFile=e=>{
+    const file=e.target.files[0];
+    if(!file)return;
+    setImportError("");
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const wb=XLSX.read(ev.target.result,{type:"array"});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
+        if(!rows.length){setImportError("File kosong!");return;}
+        // Validasi kolom nama wajib ada
+        if(!rows[0].hasOwnProperty("nama")){setImportError("Kolom 'nama' tidak ditemukan. Gunakan template yang disediakan!");return;}
+        setPreviewData(rows.slice(0,5));
+        setShowImportModal(true);
+        // Simpan semua rows di ref
+        fileRef._rows=rows;
+      }catch(err){setImportError("File tidak valid: "+err.message);}
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value="";
+  };
+
+  const doImport=async(mode)=>{
+    const rows=fileRef._rows||[];
+    if(!rows.length)return;
+    setImporting(true);
+    setShowImportModal(false);
+    const existing=mode==="replace"?[]:items;
+    const existingIds=new Set(existing.map(x=>x.id));
+    const newItems=rows.map(r=>{
+      const tipe=String(r.tipe||"Bahan Baku").trim();
+      const id=(tipe==="Produk Jadi"?"PRD":"BHN")+"-"+String(Date.now()+Math.random()).slice(-6);
+      return{
+        id,
+        nama:String(r.nama||"").trim(),
+        tipe:tipe==="Produk Jadi"?"Produk Jadi":"Bahan Baku",
+        sat:String(r.sat||"pcs").trim(),
+        hpp:Number(r.hpp)||0,
+        hj:Number(r.hj)||0,
+        min:Number(r.min)||0,
+        stok:Number(r.stok)||0,
+        note:String(r.note||"").trim(),
+      };
+    }).filter(x=>x.nama);
+    const merged=[...existing,...newItems];
+    const res=await gas("saveMaster",{items:merged});
+    if(res&&res.error){toast("❌ "+res.error);setImporting(false);return;}
+    setItems(merged);
+    addLog({id:uid(),time:ts(),user:"—",type:"Import",desc:`Import ${newItems.length} item (${mode==="replace"?"ganti semua":"tambah"})`,isEdit:false});
+    toast(`✅ Berhasil import ${newItems.length} item!`);
+    setImporting(false);
+  };
 
   const save=async()=>{
     if(!form.nama.trim()){toast("Nama item wajib diisi");return;}
@@ -381,10 +454,19 @@ const ItemDB=({items,setItems,toast,addLog})=>{
 
   return(
     <div style={{padding:24,overflow:"auto",height:"100%"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
         <div style={{fontWeight:700,fontSize:20}}>Master Barang</div>
-        <Btn onClick={()=>{setForm(ef());setEditIdx(-1);setShowForm(true);}}>+ Tambah Item</Btn>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <Btn variant="ghost" onClick={downloadTemplate}>⬇️ Download Template Excel</Btn>
+          <label style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#10b981",color:"#fff",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:500}}>
+            📥 Import Excel
+            <input type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleFile}/>
+          </label>
+          <Btn onClick={()=>{setForm(ef());setEditIdx(-1);setShowForm(true);}}>+ Tambah Item</Btn>
+        </div>
       </div>
+      {importError&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:8,padding:"10px 14px",marginBottom:12,color:"#dc2626",fontSize:13}}>⚠️ {importError}</div>}
+      {importing&&<div style={{background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:8,padding:"10px 14px",marginBottom:12,color:"#1d4ed8",fontSize:13}}>⏳ Sedang mengimport data...</div>}
       <Card style={{padding:0}}>
         <div style={{overflow:"auto"}}>
           <table>
@@ -430,6 +512,45 @@ const ItemDB=({items,setItems,toast,addLog})=>{
             <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:4}}>
               <Btn variant="ghost" onClick={()=>setShowForm(false)}>Batal</Btn>
               <Btn onClick={save} disabled={saving}>{saving?"Menyimpan...":"Simpan"}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showImportModal&&(
+        <Modal title="Preview Import Excel" onClose={()=>setShowImportModal(false)} width={600}>
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#166534"}}>
+              ✅ File berhasil dibaca. Menampilkan 5 baris pertama dari {(fileRef._rows||[]).length} baris total.
+            </div>
+            <div style={{overflow:"auto",maxHeight:200}}>
+              <table style={{fontSize:12}}>
+                <thead><tr><th>Nama</th><th>Tipe</th><th>Satuan</th><th>HPP</th><th>HJ</th><th>Stok</th></tr></thead>
+                <tbody>
+                  {previewData.map((r,i)=>(
+                    <tr key={i}>
+                      <td>{r.nama||"—"}</td>
+                      <td>{r.tipe||"Bahan Baku"}</td>
+                      <td>{r.sat||"pcs"}</td>
+                      <td>{Number(r.hpp||0).toLocaleString("id-ID")}</td>
+                      <td>{Number(r.hj||0).toLocaleString("id-ID")}</td>
+                      <td>{Number(r.stok||0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#92400e"}}>
+              <strong>Pilih mode import:</strong>
+            </div>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+              <Btn variant="ghost" onClick={()=>setShowImportModal(false)}>Batal</Btn>
+              <Btn variant="ghost" onClick={()=>doImport("append")} style={{borderColor:"#10b981",color:"#10b981"}}>
+                ➕ Tambahkan ke data yang ada ({items.length} item)
+              </Btn>
+              <Btn variant="danger" onClick={()=>{if(confirm("Semua data item lama akan dihapus dan diganti data baru. Lanjutkan?"))doImport("replace");}}>
+                🔄 Ganti Semua Data
+              </Btn>
             </div>
           </div>
         </Modal>
