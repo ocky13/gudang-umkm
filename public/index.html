@@ -1134,6 +1134,368 @@ const Login=({users,onLogin,onDataRefresh,gasOk})=>{
 };
 
 // ── SIDEBAR NAV ──────────────────────────────────────────────
+// ── LAPORAN HELPERS ──────────────────────────────────────────
+const exportExcel=(data,cols,filename)=>{
+  const ws=XLSX.utils.json_to_sheet(data.map(r=>{const o={};cols.forEach(c=>o[c.h]=r[c.k]);return o;}));
+  ws["!cols"]=cols.map(c=>({wch:c.w||18}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Laporan");
+  XLSX.writeFile(wb,filename+".xlsx");
+};
+const DateFilter=({from,to,setFrom,setTo})=>(
+  <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+    <FG label="Dari"><input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={{width:145}}/></FG>
+    <FG label="Sampai"><input type="date" value={to} onChange={e=>setTo(e.target.value)} style={{width:145}}/></FG>
+  </div>
+);
+const inRange=(tgl,from,to)=>{if(!tgl)return false;const d=tgl.slice(0,10);return(!from||d>=from)&&(!to||d<=to);};
+const today=()=>new Date().toISOString().slice(0,10);
+const firstOfMonth=()=>new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10);
+
+// ── LAPORAN PENERIMAAN ────────────────────────────────────────
+const LapPenerimaan=({txMasuk,suppliers})=>{
+  const [from,setFrom]=useState(firstOfMonth());
+  const [to,setTo]=useState(today());
+  const filtered=txMasuk.filter(tx=>inRange(tx.tgl,from,to));
+  const rows=filtered.flatMap(tx=>(tx.rows||[]).map(r=>({
+    tgl:tx.tgl,invoice:tx.invoiceNo,supplier:tx.supplier||"—",
+    item:r.nama,sat:r.sat,qty:num(r.qty),harga:num(r.harga),
+    total:num(r.qty)*num(r.harga),catatan:tx.catatan||""
+  })));
+  const totalNilai=rows.reduce((s,r)=>s+r.total,0);
+  const exportData=()=>exportExcel(rows,[
+    {h:"Tanggal",k:"tgl",w:12},{h:"Invoice",k:"invoice",w:16},{h:"Supplier",k:"supplier",w:20},
+    {h:"Item",k:"item",w:22},{h:"Satuan",k:"sat",w:10},{h:"Qty",k:"qty",w:8},
+    {h:"Harga",k:"harga",w:12},{h:"Total",k:"total",w:14},{h:"Catatan",k:"catatan",w:20}
+  ],"laporan_penerimaan_"+from+"_"+to);
+  return(
+    <div style={{padding:24,overflow:"auto",height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <div style={{fontWeight:700,fontSize:20}}>📥 Laporan Penerimaan Barang</div>
+        <div style={{display:"flex",gap:8}}><Btn variant="ghost" onClick={exportData}>⬇️ Export Excel</Btn><Btn variant="ghost" onClick={()=>window.print()}>🖨️ Print</Btn></div>
+      </div>
+      <div style={{marginBottom:16}}><DateFilter from={from} to={to} setFrom={setFrom} setTo={setTo}/></div>
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <Card style={{padding:"12px 20px",flex:1,minWidth:140}}><div style={{fontSize:11,color:"#6b7280"}}>Total Transaksi</div><div style={{fontWeight:700,fontSize:22}}>{filtered.length}</div></Card>
+        <Card style={{padding:"12px 20px",flex:1,minWidth:140}}><div style={{fontSize:11,color:"#6b7280"}}>Total Item Baris</div><div style={{fontWeight:700,fontSize:22}}>{rows.length}</div></Card>
+        <Card style={{padding:"12px 20px",flex:2,minWidth:180}}><div style={{fontSize:11,color:"#6b7280"}}>Total Nilai Penerimaan</div><div style={{fontWeight:700,fontSize:22,color:"#3b82f6"}}>{rp(totalNilai)}</div></Card>
+      </div>
+      <Card style={{padding:0}}>
+        <div style={{overflow:"auto"}}>
+          <table>
+            <thead><tr><th>Tanggal</th><th>Invoice</th><th>Supplier</th><th>Item</th><th>Sat</th><th>Qty</th><th>Harga</th><th>Total</th></tr></thead>
+            <tbody>
+              {rows.map((r,i)=><tr key={i}><td>{fmtTgl(r.tgl)}</td><td style={{fontFamily:"monospace",fontSize:12}}>{r.invoice}</td><td>{r.supplier}</td><td style={{fontWeight:500}}>{r.item}</td><td>{r.sat}</td><td>{r.qty}</td><td>{rp(r.harga)}</td><td style={{fontWeight:600}}>{rp(r.total)}</td></tr>)}
+              {rows.length===0&&<tr><td colSpan={8} style={{textAlign:"center",color:"#9ca3af",padding:32}}>Tidak ada data</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ── LAPORAN PENGIRIMAN ────────────────────────────────────────
+const LapPengiriman=({txKeluar})=>{
+  const [from,setFrom]=useState(firstOfMonth());
+  const [to,setTo]=useState(today());
+  const filtered=txKeluar.filter(tx=>inRange(tx.tgl,from,to));
+  const rows=filtered.flatMap(tx=>(tx.rows||[]).map(r=>({
+    tgl:tx.tgl,invoice:tx.invoiceNo,tujuan:tx.tujuan||"—",driver:tx.driver||"—",
+    platNo:tx.platNo||"—",item:r.nama,sat:r.sat,qty:num(r.qty),hpp:num(r.hpp),
+    total:num(r.qty)*num(r.hpp)
+  })));
+  const totalNilai=rows.reduce((s,r)=>s+r.total,0);
+  const exportData=()=>exportExcel(rows,[
+    {h:"Tanggal",k:"tgl",w:12},{h:"Invoice",k:"invoice",w:16},{h:"Tujuan",k:"tujuan",w:20},
+    {h:"Driver",k:"driver",w:16},{h:"Plat No",k:"platNo",w:12},{h:"Item",k:"item",w:22},
+    {h:"Satuan",k:"sat",w:10},{h:"Qty",k:"qty",w:8},{h:"HPP",k:"hpp",w:12},{h:"Nilai HPP",k:"total",w:14}
+  ],"laporan_pengiriman_"+from+"_"+to);
+  return(
+    <div style={{padding:24,overflow:"auto",height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <div style={{fontWeight:700,fontSize:20}}>📤 Laporan Pengiriman</div>
+        <div style={{display:"flex",gap:8}}><Btn variant="ghost" onClick={exportData}>⬇️ Export Excel</Btn><Btn variant="ghost" onClick={()=>window.print()}>🖨️ Print</Btn></div>
+      </div>
+      <div style={{marginBottom:16}}><DateFilter from={from} to={to} setFrom={setFrom} setTo={setTo}/></div>
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <Card style={{padding:"12px 20px",flex:1,minWidth:140}}><div style={{fontSize:11,color:"#6b7280"}}>Total Pengiriman</div><div style={{fontWeight:700,fontSize:22}}>{filtered.length}</div></Card>
+        <Card style={{padding:"12px 20px",flex:1,minWidth:140}}><div style={{fontSize:11,color:"#6b7280"}}>Total Baris Item</div><div style={{fontWeight:700,fontSize:22}}>{rows.length}</div></Card>
+        <Card style={{padding:"12px 20px",flex:2,minWidth:180}}><div style={{fontSize:11,color:"#6b7280"}}>Total Nilai HPP Keluar</div><div style={{fontWeight:700,fontSize:22,color:"#ef4444"}}>{rp(totalNilai)}</div></Card>
+      </div>
+      <Card style={{padding:0}}>
+        <div style={{overflow:"auto"}}>
+          <table>
+            <thead><tr><th>Tanggal</th><th>Invoice</th><th>Tujuan</th><th>Driver</th><th>Plat</th><th>Item</th><th>Qty</th><th>Nilai HPP</th></tr></thead>
+            <tbody>
+              {rows.map((r,i)=><tr key={i}><td>{fmtTgl(r.tgl)}</td><td style={{fontFamily:"monospace",fontSize:12}}>{r.invoice}</td><td>{r.tujuan}</td><td>{r.driver}</td><td style={{fontSize:12}}>{r.platNo}</td><td style={{fontWeight:500}}>{r.item}</td><td>{r.qty} {r.sat}</td><td style={{fontWeight:600}}>{rp(r.total)}</td></tr>)}
+              {rows.length===0&&<tr><td colSpan={8} style={{textAlign:"center",color:"#9ca3af",padding:32}}>Tidak ada data</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ── LAPORAN MUTASI STOK ───────────────────────────────────────
+const LapMutasi=({items,txMasuk,txKeluar,txProd,txSpoilage})=>{
+  const [from,setFrom]=useState(firstOfMonth());
+  const [to,setTo]=useState(today());
+  const rows=items.map(item=>{
+    const masuk=txMasuk.filter(tx=>inRange(tx.tgl,from,to)).flatMap(tx=>tx.rows||[]).filter(r=>r.itemId===item.id).reduce((s,r)=>s+num(r.qty),0);
+    const keluar=txKeluar.filter(tx=>inRange(tx.tgl,from,to)).flatMap(tx=>tx.rows||[]).filter(r=>r.itemId===item.id).reduce((s,r)=>s+num(r.qty),0);
+    const produksiPakai=txProd.filter(tx=>inRange(tx.tgl,from,to)).flatMap(tx=>tx.rows||[]).filter(r=>r.itemId===item.id).reduce((s,r)=>s+num(r.qty),0);
+    const produksiHasil=txProd.filter(tx=>inRange(tx.tgl,from,to)).flatMap(tx=>tx.outputRows||[]).filter(r=>r.itemId===item.id).reduce((s,r)=>s+num(r.qty),0);
+    const spoilage=txSpoilage.filter(tx=>inRange(tx.tgl,from,to)).flatMap(tx=>tx.rows||[]).filter(r=>r.itemId===item.id).reduce((s,r)=>s+num(r.qty),0);
+    const totalMasuk=masuk+produksiHasil;
+    const totalKeluar=keluar+produksiPakai+spoilage;
+    return{...item,masuk,keluar,produksiPakai,produksiHasil,spoilage,totalMasuk,totalKeluar,
+      stokAkhir:num(item.stok),nilaiStok:num(item.stok)*num(item.hpp)};
+  }).filter(r=>r.totalMasuk>0||r.totalKeluar>0||r.stokAkhir>0);
+  const totalNilai=rows.reduce((s,r)=>s+r.nilaiStok,0);
+  const exportData=()=>exportExcel(rows,[
+    {h:"Kode",k:"id",w:12},{h:"Nama",k:"nama",w:22},{h:"Tipe",k:"tipe",w:12},{h:"Satuan",k:"sat",w:8},
+    {h:"Masuk",k:"masuk",w:8},{h:"Produksi Hasil",k:"produksiHasil",w:14},{h:"Keluar",k:"keluar",w:8},
+    {h:"Produksi Pakai",k:"produksiPakai",w:14},{h:"Spoilage",k:"spoilage",w:10},
+    {h:"Stok Akhir",k:"stokAkhir",w:10},{h:"HPP",k:"hpp",w:12},{h:"Nilai Stok",k:"nilaiStok",w:14}
+  ],"laporan_mutasi_"+from+"_"+to);
+  return(
+    <div style={{padding:24,overflow:"auto",height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <div style={{fontWeight:700,fontSize:20}}>🔄 Rekap Mutasi Stok</div>
+        <div style={{display:"flex",gap:8}}><Btn variant="ghost" onClick={exportData}>⬇️ Export Excel</Btn><Btn variant="ghost" onClick={()=>window.print()}>🖨️ Print</Btn></div>
+      </div>
+      <div style={{marginBottom:16}}><DateFilter from={from} to={to} setFrom={setFrom} setTo={setTo}/></div>
+      <Card style={{padding:"12px 20px",marginBottom:16}}><div style={{fontSize:11,color:"#6b7280"}}>Total Nilai Inventori Saat Ini</div><div style={{fontWeight:700,fontSize:24,color:"#3b82f6"}}>{rp(totalNilai)}</div></Card>
+      <Card style={{padding:0}}>
+        <div style={{overflow:"auto"}}>
+          <table>
+            <thead><tr><th>Kode</th><th>Nama</th><th>Sat</th><th style={{color:"#10b981"}}>Masuk</th><th style={{color:"#8b5cf6"}}>Hasil Prod</th><th style={{color:"#ef4444"}}>Keluar</th><th style={{color:"#f59e0b"}}>Pakai Prod</th><th style={{color:"#6b7280"}}>Spoilage</th><th>Stok Akhir</th><th>Nilai Stok</th></tr></thead>
+            <tbody>
+              {rows.map((r,i)=>(
+                <tr key={i}>
+                  <td style={{fontFamily:"monospace",fontSize:11,color:"#6b7280"}}>{r.id}</td>
+                  <td style={{fontWeight:500}}>{r.nama}</td>
+                  <td>{r.sat}</td>
+                  <td style={{color:"#10b981",fontWeight:600}}>{r.masuk||"—"}</td>
+                  <td style={{color:"#8b5cf6"}}>{r.produksiHasil||"—"}</td>
+                  <td style={{color:"#ef4444",fontWeight:600}}>{r.keluar||"—"}</td>
+                  <td style={{color:"#f59e0b"}}>{r.produksiPakai||"—"}</td>
+                  <td style={{color:"#6b7280"}}>{r.spoilage||"—"}</td>
+                  <td style={{fontWeight:700}}>{r.stokAkhir}</td>
+                  <td style={{fontWeight:600,color:"#1d4ed8"}}>{rp(r.nilaiStok)}</td>
+                </tr>
+              ))}
+              {rows.length===0&&<tr><td colSpan={10} style={{textAlign:"center",color:"#9ca3af",padding:32}}>Tidak ada mutasi</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ── LAPORAN HPP PRODUKSI ──────────────────────────────────────
+const LapHPPProduksi=({txProd})=>{
+  const [from,setFrom]=useState(firstOfMonth());
+  const [to,setTo]=useState(today());
+  const filtered=txProd.filter(tx=>inRange(tx.tgl,from,to));
+  const totalHPP=filtered.reduce((s,tx)=>s+num(tx.totalHPP),0);
+  const exportData=()=>exportExcel(filtered.flatMap(tx=>(tx.rows||[]).map(r=>({
+    tgl:tx.tgl,invoice:tx.invoiceNo,menu:tx.namaMenu,shift:tx.shift||"—",
+    chef:tx.chef||"—",bahan:r.nama,sat:r.sat,qty:num(r.qty),hpp:num(r.hpp),
+    totalBahan:num(r.qty)*num(r.hpp)
+  }))),[
+    {h:"Tanggal",k:"tgl",w:12},{h:"Invoice",k:"invoice",w:16},{h:"Nama Menu",k:"menu",w:20},
+    {h:"Shift",k:"shift",w:8},{h:"Chef",k:"chef",w:14},{h:"Bahan",k:"bahan",w:20},
+    {h:"Sat",k:"sat",w:8},{h:"Qty",k:"qty",w:8},{h:"HPP/Sat",k:"hpp",w:12},{h:"Total HPP",k:"totalBahan",w:14}
+  ],"laporan_hpp_produksi_"+from+"_"+to);
+  return(
+    <div style={{padding:24,overflow:"auto",height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <div style={{fontWeight:700,fontSize:20}}>🏭 HPP Produksi per Batch</div>
+        <div style={{display:"flex",gap:8}}><Btn variant="ghost" onClick={exportData}>⬇️ Export Excel</Btn><Btn variant="ghost" onClick={()=>window.print()}>🖨️ Print</Btn></div>
+      </div>
+      <div style={{marginBottom:16}}><DateFilter from={from} to={to} setFrom={setFrom} setTo={setTo}/></div>
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <Card style={{padding:"12px 20px",flex:1,minWidth:140}}><div style={{fontSize:11,color:"#6b7280"}}>Total Batch</div><div style={{fontWeight:700,fontSize:22}}>{filtered.length}</div></Card>
+        <Card style={{padding:"12px 20px",flex:2,minWidth:180}}><div style={{fontSize:11,color:"#6b7280"}}>Total HPP Produksi</div><div style={{fontWeight:700,fontSize:22,color:"#8b5cf6"}}>{rp(totalHPP)}</div></Card>
+      </div>
+      <Card style={{padding:0}}>
+        <div style={{overflow:"auto"}}>
+          {filtered.map((tx,i)=>(
+            <div key={i} style={{borderBottom:"1px solid #f0f2f5"}}>
+              <div style={{padding:"10px 16px",background:"#f8f9fb",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                  <span style={{fontFamily:"monospace",fontSize:12,color:"#6b7280"}}>{tx.invoiceNo}</span>
+                  <span style={{fontWeight:600}}>{tx.namaMenu}</span>
+                  <Badge color="purple">{tx.shift||"—"}</Badge>
+                  <span style={{fontSize:12,color:"#6b7280"}}>{fmtTgl(tx.tgl)}</span>
+                </div>
+                <div style={{fontWeight:700,color:"#8b5cf6"}}>{rp(tx.totalHPP)}</div>
+              </div>
+              <table style={{fontSize:12}}>
+                <thead><tr><th>Bahan</th><th>Sat</th><th>Qty</th><th>HPP/Sat</th><th>Total</th></tr></thead>
+                <tbody>
+                  {(tx.rows||[]).map((r,j)=><tr key={j}><td>{r.nama}</td><td>{r.sat}</td><td>{num(r.qty)}</td><td>{rp(r.hpp)}</td><td style={{fontWeight:600}}>{rp(num(r.qty)*num(r.hpp))}</td></tr>)}
+                </tbody>
+              </table>
+            </div>
+          ))}
+          {filtered.length===0&&<div style={{textAlign:"center",color:"#9ca3af",padding:32}}>Tidak ada data produksi</div>}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ── LAPORAN SPOILAGE ──────────────────────────────────────────
+const LapSpoilage=({txSpoilage})=>{
+  const [from,setFrom]=useState(firstOfMonth());
+  const [to,setTo]=useState(today());
+  const filtered=txSpoilage.filter(tx=>inRange(tx.tgl,from,to));
+  const rows=filtered.flatMap(tx=>(tx.rows||[]).map(r=>({
+    tgl:tx.tgl,invoice:tx.invoiceNo,kategori:tx.kategori||"—",
+    alasan:tx.alasan||"—",disposisi:tx.disposisi||"—",
+    item:r.nama,sat:r.sat,qty:num(r.qty),hpp:num(r.hpp),
+    nilaiRugi:num(r.qty)*num(r.hpp)
+  })));
+  const totalRugi=rows.reduce((s,r)=>s+r.nilaiRugi,0);
+  const exportData=()=>exportExcel(rows,[
+    {h:"Tanggal",k:"tgl",w:12},{h:"Invoice",k:"invoice",w:16},{h:"Kategori",k:"kategori",w:14},
+    {h:"Alasan",k:"alasan",w:20},{h:"Disposisi",k:"disposisi",w:14},{h:"Item",k:"item",w:22},
+    {h:"Sat",k:"sat",w:8},{h:"Qty",k:"qty",w:8},{h:"HPP",k:"hpp",w:12},{h:"Nilai Rugi",k:"nilaiRugi",w:14}
+  ],"laporan_spoilage_"+from+"_"+to);
+  return(
+    <div style={{padding:24,overflow:"auto",height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <div style={{fontWeight:700,fontSize:20}}>🗑 Laporan Spoilage</div>
+        <div style={{display:"flex",gap:8}}><Btn variant="ghost" onClick={exportData}>⬇️ Export Excel</Btn><Btn variant="ghost" onClick={()=>window.print()}>🖨️ Print</Btn></div>
+      </div>
+      <div style={{marginBottom:16}}><DateFilter from={from} to={to} setFrom={setFrom} setTo={setTo}/></div>
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <Card style={{padding:"12px 20px",flex:1,minWidth:140}}><div style={{fontSize:11,color:"#6b7280"}}>Total Kejadian</div><div style={{fontWeight:700,fontSize:22}}>{filtered.length}</div></Card>
+        <Card style={{padding:"12px 20px",flex:2,minWidth:180}}><div style={{fontSize:11,color:"#ef4444"}}>Total Nilai Kerugian</div><div style={{fontWeight:700,fontSize:22,color:"#ef4444"}}>{rp(totalRugi)}</div></Card>
+      </div>
+      <Card style={{padding:0}}>
+        <div style={{overflow:"auto"}}>
+          <table>
+            <thead><tr><th>Tanggal</th><th>Invoice</th><th>Kategori</th><th>Alasan</th><th>Item</th><th>Qty</th><th>Nilai Rugi</th><th>Disposisi</th></tr></thead>
+            <tbody>
+              {rows.map((r,i)=><tr key={i}><td>{fmtTgl(r.tgl)}</td><td style={{fontFamily:"monospace",fontSize:12}}>{r.invoice}</td><td><Badge color="red">{r.kategori}</Badge></td><td style={{fontSize:12}}>{r.alasan}</td><td style={{fontWeight:500}}>{r.item}</td><td>{r.qty} {r.sat}</td><td style={{fontWeight:600,color:"#ef4444"}}>{rp(r.nilaiRugi)}</td><td style={{fontSize:12,color:"#6b7280"}}>{r.disposisi}</td></tr>)}
+              {rows.length===0&&<tr><td colSpan={8} style={{textAlign:"center",color:"#9ca3af",padding:32}}>Tidak ada data</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ── LAPORAN NILAI INVENTORI ───────────────────────────────────
+const LapInventori=({items})=>{
+  const byTipe=items.reduce((acc,x)=>{const t=x.tipe||"Lainnya";if(!acc[t])acc[t]=[];acc[t].push(x);return acc;},{});
+  const totalNilai=items.reduce((s,x)=>s+num(x.stok)*num(x.hpp),0);
+  const lowStock=items.filter(x=>num(x.stok)<=num(x.min)&&num(x.min)>0);
+  const exportData=()=>exportExcel(items.map(x=>({...x,nilaiStok:num(x.stok)*num(x.hpp)})),[
+    {h:"Kode",k:"id",w:12},{h:"Nama",k:"nama",w:22},{h:"Tipe",k:"tipe",w:12},{h:"Satuan",k:"sat",w:8},
+    {h:"Stok",k:"stok",w:10},{h:"HPP",k:"hpp",w:12},{h:"Harga Jual",k:"hj",w:12},
+    {h:"Stok Min",k:"min",w:10},{h:"Nilai Stok",k:"nilaiStok",w:16},{h:"Catatan",k:"note",w:20}
+  ],"laporan_inventori_"+today());
+  return(
+    <div style={{padding:24,overflow:"auto",height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <div style={{fontWeight:700,fontSize:20}}>💰 Nilai Inventori</div>
+        <div style={{display:"flex",gap:8}}><Btn variant="ghost" onClick={exportData}>⬇️ Export Excel</Btn><Btn variant="ghost" onClick={()=>window.print()}>🖨️ Print</Btn></div>
+      </div>
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <Card style={{padding:"12px 20px",flex:1,minWidth:140}}><div style={{fontSize:11,color:"#6b7280"}}>Total Item</div><div style={{fontWeight:700,fontSize:22}}>{items.length}</div></Card>
+        <Card style={{padding:"12px 20px",flex:2,minWidth:200}}><div style={{fontSize:11,color:"#6b7280"}}>Total Nilai Inventori (HPP)</div><div style={{fontWeight:700,fontSize:24,color:"#3b82f6"}}>{rp(totalNilai)}</div></Card>
+        {lowStock.length>0&&<Card style={{padding:"12px 20px",flex:1,minWidth:140,borderColor:"#fca5a5"}}><div style={{fontSize:11,color:"#ef4444"}}>⚠ Stok Rendah</div><div style={{fontWeight:700,fontSize:22,color:"#ef4444"}}>{lowStock.length} item</div></Card>}
+      </div>
+      {Object.entries(byTipe).map(([tipe,tItems])=>{
+        const nilaiTipe=tItems.reduce((s,x)=>s+num(x.stok)*num(x.hpp),0);
+        return(
+          <div key={tipe} style={{marginBottom:20}}>
+            <div style={{fontWeight:600,fontSize:14,marginBottom:8,display:"flex",justifyContent:"space-between"}}>
+              <span>{tipe} ({tItems.length} item)</span>
+              <span style={{color:"#3b82f6"}}>{rp(nilaiTipe)}</span>
+            </div>
+            <Card style={{padding:0}}>
+              <div style={{overflow:"auto"}}>
+                <table>
+                  <thead><tr><th>Kode</th><th>Nama</th><th>Sat</th><th>Stok</th><th>HPP</th><th>Nilai Stok</th><th>Min</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {tItems.map((x,i)=>{
+                      const nilai=num(x.stok)*num(x.hpp);
+                      const isLow=num(x.min)>0&&num(x.stok)<=num(x.min);
+                      return<tr key={i} style={{background:isLow?"#fff5f5":""}}>
+                        <td style={{fontFamily:"monospace",fontSize:11,color:"#6b7280"}}>{x.id}</td>
+                        <td style={{fontWeight:500}}>{x.nama}</td>
+                        <td>{x.sat}</td>
+                        <td style={{fontWeight:700,color:isLow?"#ef4444":"#111"}}>{num(x.stok)}</td>
+                        <td>{rp(x.hpp)}</td>
+                        <td style={{fontWeight:600,color:"#1d4ed8"}}>{rp(nilai)}</td>
+                        <td style={{color:"#6b7280"}}>{num(x.min)||"—"}</td>
+                        <td>{isLow?<Badge color="red">⚠ Rendah</Badge>:<Badge color="green">OK</Badge>}</td>
+                      </tr>;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        );
+      })}
+      {items.length===0&&<Card><div style={{textAlign:"center",color:"#9ca3af",padding:32}}>Belum ada data item</div></Card>}
+    </div>
+  );
+};
+
+// ── STOK OPNAME ───────────────────────────────────────────────
+const LapStokOpname=({items})=>{
+  const exportData=()=>exportExcel(items.map(x=>({...x,stokFisik:"",selisih:"",keterangan:""})),[
+    {h:"Kode",k:"id",w:12},{h:"Nama",k:"nama",w:22},{h:"Tipe",k:"tipe",w:12},{h:"Satuan",k:"sat",w:8},
+    {h:"Stok Sistem",k:"stok",w:12},{h:"Stok Fisik",k:"stokFisik",w:12},{h:"Selisih",k:"selisih",w:10},{h:"Keterangan",k:"keterangan",w:20}
+  ],"stok_opname_"+today());
+  return(
+    <div style={{padding:24,overflow:"auto",height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <div style={{fontWeight:700,fontSize:20}}>📋 Form Stok Opname</div>
+        <div style={{display:"flex",gap:8}}>
+          <Btn variant="ghost" onClick={exportData}>⬇️ Export Excel (isi stok fisik)</Btn>
+          <Btn variant="ghost" onClick={()=>window.print()}>🖨️ Print</Btn>
+        </div>
+      </div>
+      <div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#92400e"}}>
+        💡 Export ke Excel, isi kolom <strong>Stok Fisik</strong> berdasarkan hasil hitung fisik di gudang, lalu hitung selisihnya.
+      </div>
+      <Card style={{padding:0}}>
+        <div style={{overflow:"auto"}}>
+          <table>
+            <thead><tr><th>Kode</th><th>Nama</th><th>Tipe</th><th>Sat</th><th>Stok Sistem</th><th style={{background:"#f0fdf4",color:"#166534"}}>Stok Fisik</th><th style={{background:"#fef9c3",color:"#713f12"}}>Selisih</th><th>Keterangan</th></tr></thead>
+            <tbody>
+              {items.map((x,i)=>(
+                <tr key={i}>
+                  <td style={{fontFamily:"monospace",fontSize:11,color:"#6b7280"}}>{x.id}</td>
+                  <td style={{fontWeight:500}}>{x.nama}</td>
+                  <td><Badge color={x.tipe==="Produk Jadi"?"purple":"blue"}>{x.tipe}</Badge></td>
+                  <td>{x.sat}</td>
+                  <td style={{fontWeight:700}}>{num(x.stok)}</td>
+                  <td style={{background:"#f0fdf4",minWidth:80}}>&nbsp;</td>
+                  <td style={{background:"#fef9c3",minWidth:80}}>&nbsp;</td>
+                  <td style={{minWidth:120}}>&nbsp;</td>
+                </tr>
+              ))}
+              {items.length===0&&<tr><td colSpan={8} style={{textAlign:"center",color:"#9ca3af",padding:32}}>Belum ada item</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
 const NAV=[
   {id:"dashboard",label:"Dashboard",icon:"📊"},
   {id:"masuk",label:"Barang Masuk",icon:"📥"},
@@ -1142,6 +1504,14 @@ const NAV=[
   {id:"stok",label:"Monitor Stok",icon:"📦"},
   {id:"kartu-stok",label:"Kartu Stok",icon:"📋"},
   {id:"spoilage",label:"Spoilage",icon:"🗑"},
+  null,
+  {id:"lap-penerimaan",label:"Lap. Penerimaan",icon:"📥"},
+  {id:"lap-pengiriman",label:"Lap. Pengiriman",icon:"📤"},
+  {id:"lap-mutasi",label:"Mutasi Stok",icon:"🔄"},
+  {id:"lap-hpp",label:"HPP Produksi",icon:"🏭"},
+  {id:"lap-spoilage",label:"Lap. Spoilage",icon:"🗑"},
+  {id:"lap-inventori",label:"Nilai Inventori",icon:"💰"},
+  {id:"lap-opname",label:"Stok Opname",icon:"📋"},
   null,
   {id:"db-item",label:"Master Barang",icon:"🗃"},
   {id:"db-supplier",label:"Master Supplier",icon:"🤝"},
@@ -1226,6 +1596,13 @@ const App=()=>{
       case "stok":        return <StokPage items={items}/>;
       case "kartu-stok":  return <KartuStokPage items={items} txMasuk={txMasuk} txKeluar={txKeluar} txProd={txProd} txSpoilage={txSpoilage}/>;
       case "spoilage":    return <SpoilagePage allItems={items} setAllItems={setItems} currentUser={currentUser} addLog={addLog} toast={showToast} txList={txSpoilage} setTxList={setTxSpoilage}/>;
+      case "lap-penerimaan": return <LapPenerimaan txMasuk={txMasuk} suppliers={suppliers}/>;
+      case "lap-pengiriman": return <LapPengiriman txKeluar={txKeluar}/>;
+      case "lap-mutasi":     return <LapMutasi items={items} txMasuk={txMasuk} txKeluar={txKeluar} txProd={txProd} txSpoilage={txSpoilage}/>;
+      case "lap-hpp":        return <LapHPPProduksi txProd={txProd}/>;
+      case "lap-spoilage":   return <LapSpoilage txSpoilage={txSpoilage}/>;
+      case "lap-inventori":  return <LapInventori items={items}/>;
+      case "lap-opname":     return <LapStokOpname items={items}/>;
       case "db-item":     return <ItemDB items={items} setItems={setItems} toast={showToast} addLog={addLog}/>;
       case "db-supplier": return <SupDB suppliers={suppliers} setSuppliers={setSuppliers} toast={showToast} addLog={addLog}/>;
       case "users":       return <UsersPage users={users} setUsers={setUsers} currentUser={currentUser} toast={showToast}/>;
