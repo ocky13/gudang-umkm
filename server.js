@@ -1,86 +1,46 @@
 // ============================================================
-//  Gudang UMKM — Node.js + Express + SQLite Backend
+//  Gudang UMKM — Node.js + Express + better-sqlite3
 // ============================================================
 const express = require("express");
-const Database = require("better-sqlite3");
 const path = require("path");
 const fs = require("fs");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, "gudang.db");
 
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-// ── DATABASE SETUP ────────────────────────────────────────────
-const db = new Database(DB_PATH);
-db.pragma("journal_mode = WAL");
+// ── DATABASE SETUP (JSON file-based, no native modules) ───────
+const DB_PATH = path.join(__dirname, "gudang_data.json");
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS items (
-    id TEXT PRIMARY KEY, nama TEXT, tipe TEXT, sat TEXT,
-    hpp REAL DEFAULT 0, hj REAL DEFAULT 0, min REAL DEFAULT 0,
-    stok REAL DEFAULT 0, note TEXT DEFAULT ''
-  );
-  CREATE TABLE IF NOT EXISTS suppliers (
-    id TEXT PRIMARY KEY, nama TEXT, pic TEXT, telp TEXT,
-    kat TEXT, alamat TEXT, status TEXT DEFAULT 'Aktif'
-  );
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY, username TEXT UNIQUE, nama TEXT,
-    pass TEXT, role TEXT, status TEXT DEFAULT 'Aktif', lastLogin TEXT DEFAULT ''
-  );
-  CREATE TABLE IF NOT EXISTS logs (
-    id TEXT PRIMARY KEY, time TEXT, user TEXT,
-    type TEXT, desc TEXT, isEdit INTEGER DEFAULT 0
-  );
-  CREATE TABLE IF NOT EXISTS txMasuk (
-    id TEXT PRIMARY KEY, invoiceNo TEXT, tgl TEXT, ref TEXT,
-    supplier TEXT, catatan TEXT, by TEXT, createdAt TEXT, isEdited INTEGER DEFAULT 0
-  );
-  CREATE TABLE IF NOT EXISTS txMasukDetail (
-    txId TEXT, invoiceNo TEXT, tgl TEXT, itemId TEXT, nama TEXT,
-    sat TEXT, qty REAL, harga REAL, hpp REAL, note TEXT
-  );
-  CREATE TABLE IF NOT EXISTS txKeluar (
-    id TEXT PRIMARY KEY, invoiceNo TEXT, tgl TEXT, ref TEXT, noSJ TEXT,
-    tujuan TEXT, platNo TEXT, jenisKendaraan TEXT, driver TEXT,
-    catatan TEXT, by TEXT, createdAt TEXT, isEdited INTEGER DEFAULT 0
-  );
-  CREATE TABLE IF NOT EXISTS txKeluarDetail (
-    txId TEXT, invoiceNo TEXT, tgl TEXT, itemId TEXT, nama TEXT,
-    sat TEXT, qty REAL, hpp REAL, note TEXT
-  );
-  CREATE TABLE IF NOT EXISTS txProd (
-    id TEXT PRIMARY KEY, invoiceNo TEXT, tgl TEXT, ref TEXT, namaMenu TEXT,
-    qtyProd REAL, totalHPP REAL, shift TEXT, chef TEXT, qc TEXT,
-    catatan TEXT, by TEXT, createdAt TEXT, isEdited INTEGER DEFAULT 0
-  );
-  CREATE TABLE IF NOT EXISTS txProdDetail (
-    txId TEXT, invoiceNo TEXT, tgl TEXT, itemId TEXT, nama TEXT,
-    sat TEXT, qty REAL, hpp REAL, note TEXT
-  );
-  CREATE TABLE IF NOT EXISTS txProdOutput (
-    txId TEXT, invoiceNo TEXT, tgl TEXT, itemId TEXT, nama TEXT,
-    sat TEXT, qty REAL, note TEXT
-  );
-  CREATE TABLE IF NOT EXISTS txSpoilage (
-    id TEXT PRIMARY KEY, invoiceNo TEXT, tgl TEXT, kategori TEXT,
-    alasan TEXT, disposisi TEXT, totalNilai REAL,
-    by TEXT, createdAt TEXT
-  );
-  CREATE TABLE IF NOT EXISTS txSpoilageDetail (
-    txId TEXT, invoiceNo TEXT, tgl TEXT, itemId TEXT, nama TEXT,
-    sat TEXT, qty REAL, hpp REAL, note TEXT
-  );
-`);
+const EMPTY_DB = {
+  items: [], suppliers: [], users: [], logs: [],
+  txMasuk: [], txMasukDetail: [],
+  txKeluar: [], txKeluarDetail: [],
+  txProd: [], txProdDetail: [], txProdOutput: [],
+  txSpoilage: [], txSpoilageDetail: []
+};
+
+function loadDB() {
+  try {
+    if (fs.existsSync(DB_PATH)) return JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
+  } catch(e) {}
+  return JSON.parse(JSON.stringify(EMPTY_DB));
+}
+
+function saveDB(data) {
+  fs.writeFileSync(DB_PATH, JSON.stringify(data), "utf8");
+}
 
 // Seed default users if empty
-const userCount = db.prepare("SELECT COUNT(*) as c FROM users").get();
-if (userCount.c === 0) {
-  db.prepare("INSERT INTO users VALUES (?,?,?,?,?,?,?)").run("1","admin","Admin Utama","admin123","superadmin","Aktif","—");
-  db.prepare("INSERT INTO users VALUES (?,?,?,?,?,?,?)").run("2","gudang","Staff Gudang","gudang123","gudang","Aktif","—");
+let _db = loadDB();
+if (!_db.users || _db.users.length === 0) {
+  _db.users = [
+    { id:"1", username:"admin",  nama:"Admin Utama",  pass:"admin123",  role:"superadmin", status:"Aktif", lastLogin:"—" },
+    { id:"2", username:"gudang", nama:"Staff Gudang", pass:"gudang123", role:"gudang",     status:"Aktif", lastLogin:"—" }
+  ];
+  saveDB(_db);
 }
 
 // ── HELPERS ──────────────────────────────────────────────────
@@ -91,52 +51,30 @@ const DETAIL_MAP = {
   txSpoilage: { detail: "txSpoilageDetail", output: null },
 };
 
-function readAll(table) {
-  return db.prepare(`SELECT * FROM ${table}`).all();
-}
-
-function readTxWithDetail(header, detail, output) {
-  const txs = db.prepare(`SELECT * FROM ${header}`).all();
-  const details = db.prepare(`SELECT * FROM ${detail}`).all();
-  const outputs = output ? db.prepare(`SELECT * FROM ${output}`).all() : [];
-  const dmap = {}, omap = {};
-  details.forEach(d => { if (!dmap[d.txId]) dmap[d.txId] = []; dmap[d.txId].push(d); });
-  outputs.forEach(o => { if (!omap[o.txId]) omap[o.txId] = []; omap[o.txId].push(o); });
-  return txs.map(tx => ({
-    ...tx,
-    rows: dmap[tx.id] || [],
-    ...(output ? { outputRows: omap[tx.id] || [] } : {})
-  }));
-}
-
-function insertRows(table, rows) {
-  if (!rows || !rows.length) return;
-  const cols = Object.keys(rows[0]);
-  const stmt = db.prepare(
-    `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`
-  );
-  const insertMany = db.transaction(arr => arr.forEach(r => stmt.run(cols.map(c => r[c] ?? ""))));
-  insertMany(rows);
-}
-
-function deleteDetailByTxId(table, txId) {
-  db.prepare(`DELETE FROM ${table} WHERE txId = ?`).run(String(txId));
-}
-
 // ── API ROUTES ────────────────────────────────────────────────
 
 // loadAll
 app.post("/api/loadAll", (req, res) => {
   try {
+    const d = loadDB();
+    // Attach rows to transactions
+    const attach = (txList, detailList, outputList) =>
+      (txList || []).map(tx => ({
+        ...tx,
+        rows: (detailList || []).filter(r => String(r.txId) === String(tx.id)),
+        ...(outputList !== undefined ? {
+          outputRows: (outputList || []).filter(r => String(r.txId) === String(tx.id))
+        } : {})
+      }));
     res.json({
-      items:      readAll("items"),
-      suppliers:  readAll("suppliers"),
-      users:      readAll("users"),
-      logs:       readAll("logs"),
-      txMasuk:    readTxWithDetail("txMasuk",    "txMasukDetail",    null),
-      txKeluar:   readTxWithDetail("txKeluar",   "txKeluarDetail",   null),
-      txProd:     readTxWithDetail("txProd",     "txProdDetail",     "txProdOutput"),
-      txSpoilage: readTxWithDetail("txSpoilage", "txSpoilageDetail", null),
+      items:      d.items      || [],
+      suppliers:  d.suppliers  || [],
+      users:      d.users      || [],
+      logs:       d.logs       || [],
+      txMasuk:    attach(d.txMasuk,    d.txMasukDetail,    undefined),
+      txKeluar:   attach(d.txKeluar,   d.txKeluarDetail,   undefined),
+      txProd:     attach(d.txProd,     d.txProdDetail,     d.txProdOutput),
+      txSpoilage: attach(d.txSpoilage, d.txSpoilageDetail, undefined),
     });
   } catch (e) { res.json({ error: e.message }); }
 });
@@ -144,103 +82,92 @@ app.post("/api/loadAll", (req, res) => {
 // saveMaster
 app.post("/api/saveMaster", (req, res) => {
   try {
-    const p = req.body;
-    if (p.items) {
-      db.prepare("DELETE FROM items").run();
-      insertRows("items", p.items);
-    }
-    if (p.suppliers) {
-      db.prepare("DELETE FROM suppliers").run();
-      insertRows("suppliers", p.suppliers);
-    }
-    if (p.users) {
-      db.prepare("DELETE FROM users").run();
-      insertRows("users", p.users);
-    }
-    res.json({ ok: true });
+    const d = loadDB(); const p = req.body;
+    if (p.items)     d.items     = p.items;
+    if (p.suppliers) d.suppliers = p.suppliers;
+    if (p.users)     d.users     = p.users;
+    saveDB(d); res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
 });
 
 // appendTransaction
 app.post("/api/appendTransaction", (req, res) => {
   try {
-    const p = req.body;
+    const d = loadDB(); const p = req.body;
     const allowed = ["txMasuk","txKeluar","txProd","txSpoilage"];
     if (!allowed.includes(p.sheet)) return res.json({ error: "Sheet tidak valid" });
     const tx = p.tx;
-    insertRows(p.sheet, [tx]);
+    d[p.sheet].push(tx);
     const dm = DETAIL_MAP[p.sheet];
     if (dm) {
-      const detail = (tx.rows || []).map(r => ({ ...r, txId: tx.id, invoiceNo: tx.invoiceNo, tgl: tx.tgl }));
-      insertRows(dm.detail, detail);
+      const detail = (tx.rows||[]).map(r=>({...r,txId:tx.id,invoiceNo:tx.invoiceNo,tgl:tx.tgl}));
+      d[dm.detail].push(...detail);
       if (dm.output) {
-        const out = (tx.outputRows || []).map(r => ({ ...r, txId: tx.id, invoiceNo: tx.invoiceNo, tgl: tx.tgl }));
-        insertRows(dm.output, out);
+        const out = (tx.outputRows||[]).map(r=>({...r,txId:tx.id,invoiceNo:tx.invoiceNo,tgl:tx.tgl}));
+        d[dm.output].push(...out);
       }
     }
-    if (p.logEntry) insertRows("logs", [p.logEntry]);
-    res.json({ ok: true });
+    if (p.logEntry) d.logs.push(p.logEntry);
+    saveDB(d); res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
 });
 
 // updateTransaction
 app.post("/api/updateTransaction", (req, res) => {
   try {
-    const p = req.body;
-    const tx = p.tx;
-    insertRows(p.sheet, [tx]);
+    const d = loadDB(); const p = req.body; const tx = p.tx;
+    const idx = d[p.sheet].findIndex(x => String(x.id) === String(tx.id));
+    if (idx >= 0) d[p.sheet][idx] = tx; else d[p.sheet].push(tx);
     const dm = DETAIL_MAP[p.sheet];
     if (dm) {
-      deleteDetailByTxId(dm.detail, tx.id);
-      const detail = (tx.rows || []).map(r => ({ ...r, txId: tx.id, invoiceNo: tx.invoiceNo, tgl: tx.tgl }));
-      insertRows(dm.detail, detail);
+      d[dm.detail] = d[dm.detail].filter(r => String(r.txId) !== String(tx.id));
+      d[dm.detail].push(...(tx.rows||[]).map(r=>({...r,txId:tx.id,invoiceNo:tx.invoiceNo,tgl:tx.tgl})));
       if (dm.output) {
-        deleteDetailByTxId(dm.output, tx.id);
-        const out = (tx.outputRows || []).map(r => ({ ...r, txId: tx.id, invoiceNo: tx.invoiceNo, tgl: tx.tgl }));
-        insertRows(dm.output, out);
+        d[dm.output] = d[dm.output].filter(r => String(r.txId) !== String(tx.id));
+        d[dm.output].push(...(tx.outputRows||[]).map(r=>({...r,txId:tx.id,invoiceNo:tx.invoiceNo,tgl:tx.tgl})));
       }
     }
-    if (p.logEntry) insertRows("logs", [p.logEntry]);
-    if (p.items) { db.prepare("DELETE FROM items").run(); insertRows("items", p.items); }
-    res.json({ ok: true });
+    if (p.logEntry) d.logs.push(p.logEntry);
+    if (p.items) d.items = p.items;
+    saveDB(d); res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
 });
 
 // deleteTransaction
 app.post("/api/deleteTransaction", (req, res) => {
   try {
-    const p = req.body;
-    db.prepare(`DELETE FROM ${p.sheet} WHERE id = ?`).run(String(p.txId));
+    const d = loadDB(); const p = req.body;
+    d[p.sheet] = d[p.sheet].filter(x => String(x.id) !== String(p.txId));
     const dm = DETAIL_MAP[p.sheet];
     if (dm) {
-      deleteDetailByTxId(dm.detail, p.txId);
-      if (dm.output) deleteDetailByTxId(dm.output, p.txId);
+      d[dm.detail] = d[dm.detail].filter(r => String(r.txId) !== String(p.txId));
+      if (dm.output) d[dm.output] = d[dm.output].filter(r => String(r.txId) !== String(p.txId));
     }
-    if (p.items) { db.prepare("DELETE FROM items").run(); insertRows("items", p.items); }
-    res.json({ ok: true });
+    if (p.items) d.items = p.items;
+    saveDB(d); res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
 });
 
 // updateItems
 app.post("/api/updateItems", (req, res) => {
   try {
-    const items = Array.isArray(req.body) ? req.body : req.body.items;
-    db.prepare("DELETE FROM items").run();
-    insertRows("items", items);
-    res.json({ ok: true });
+    const d = loadDB();
+    d.items = Array.isArray(req.body) ? req.body : req.body.items;
+    saveDB(d); res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
 });
 
 // updateUserLogin
 app.post("/api/updateUserLogin", (req, res) => {
   try {
-    const p = req.body;
-    db.prepare("UPDATE users SET lastLogin = ? WHERE id = ?").run(p.lastLogin, String(p.userId));
-    res.json({ ok: true });
+    const d = loadDB(); const p = req.body;
+    const u = d.users.find(x => String(x.id) === String(p.userId));
+    if (u) u.lastLogin = p.lastLogin;
+    saveDB(d); res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
 });
 
-// Fallback: serve index.html for all other routes
+// Fallback
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
