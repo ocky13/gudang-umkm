@@ -877,6 +877,7 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
   };
 
   const items=allItems; // semua tipe bisa dipilih di baris input
+  const formKey=editId||"new"; // force re-render saat ganti edit target
 
   return(
     <div style={{padding:24,height:"100%",overflow:"hidden",display:"flex",gap:20}}>
@@ -886,7 +887,7 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
           {mode==="in"?"📥":mode==="out"?"📤":"🏭"} {TITLE[mode]}
           {editId&&<Badge color="yellow">Mode Edit</Badge>}
         </div>
-        <Card>
+        <Card key={formKey}>
           <div style={{fontWeight:600,marginBottom:14,fontSize:13,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em"}}>Informasi Transaksi</div>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -916,10 +917,9 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
           </div>
         </Card>
 
-        <Card>
+        <Card key={formKey+"-rows"}>
           <div style={{fontWeight:600,marginBottom:12,fontSize:13,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em"}}>
-            {mode==="prod"?"🧪 Bahan Baku Digunakan":"📦 Detail Item"}
-          </div>
+            {mode==="prod"?"🧪 Bahan Baku Digunakan":"📦 Detail Item"}          </div>
           <RowTable rows={rows} setRows={setRows} items={items} mode={mode}/>
           {mode==="prod"&&(
             <>
