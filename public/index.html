@@ -737,7 +737,33 @@ const OutputRowTable=({outputRows,setOutputRows,items})=>{
 
 // ── TX FORM ──────────────────────────────────────────────────
 const TITLE={in:"Barang Masuk",out:"Barang Keluar",prod:"Produksi"};
-const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txList,setTxList,sheetKey})=>{
+const printInvoice=(tx,items)=>{
+  const rows=tx.rows||[];
+  const total=rows.reduce((s,r)=>s+num(r.qty)*(num(r.harga)||num(r.hpp)),0);
+  const w=window.open("","_blank","width=800,height=600");
+  w.document.write(`<html><head><title>Invoice ${tx.invoiceNo}</title>
+  <style>body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#111}
+  h2{margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:16px}
+  th,td{border:1px solid #ddd;padding:6px 10px;text-align:left}th{background:#f5f5f5}
+  .right{text-align:right}.total{font-weight:bold;font-size:13px}
+  .info{display:flex;gap:40px;margin:12px 0}.info div{line-height:1.8}
+  @media print{button{display:none}}</style></head><body>
+  <h2>INVOICE</h2><div style="font-size:11px;color:#888">${tx.invoiceNo}</div>
+  <div class="info">
+    <div><b>Tanggal:</b> ${fmtTgl(tx.tgl)}<br/><b>Kepada:</b> ${tx.tujuan||tx.supplier||"—"}<br/>${tx.ref?"<b>Ref:</b> "+tx.ref:""}</div>
+    <div><b>Dibuat oleh:</b> ${tx.by||"—"}</div>
+  </div>
+  <table><thead><tr><th>No</th><th>Item</th><th>Sat</th><th class="right">Qty</th><th class="right">Harga</th><th class="right">Total</th></tr></thead>
+  <tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${r.nama}</td><td>${r.sat}</td><td class="right">${num(r.qty)}</td><td class="right">${rp(num(r.harga)||num(r.hpp))}</td><td class="right">${rp(num(r.qty)*(num(r.harga)||num(r.hpp)))}</td></tr>`).join("")}
+  </tbody><tfoot><tr><td colspan="5" class="right total">Total</td><td class="right total">${rp(total)}</td></tr></tfoot></table>
+  <div style="margin-top:40px;display:flex;justify-content:space-between">
+    <div style="text-align:center"><div style="height:60px"></div><div>Penerima</div></div>
+    <div style="text-align:center"><div style="height:60px"></div><div>Pengirim</div></div>
+  </div>
+  <button onclick="window.print()" style="margin-top:16px;padding:8px 16px;cursor:pointer">🖨️ Print</button>
+  </body></html>`);
+  w.document.close();w.print();
+};
   const ef=()=>({tgl:tod(),ref:"",supplier:"",tujuan:"",noSJ:"",platNo:"",jenisKendaraan:"",driver:"",catatan:"",shift:"Pagi (06-14)",chef:"",qc:"Lulus",totalHPP:""});
   const [form,setForm]=useState(ef());
   const [rows,setRows]=useState([]);
@@ -768,14 +794,34 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
     return upd;
   };
 
-  const save=async()=>{
+  const save=async(printMode=null)=>{
     if(!rows.length||rows.some(r=>!r.nama||!r.qty)){toast("Isi minimal satu item!");return;}
     if(mode==="prod"&&(!outputRows.length||outputRows.some(r=>!r.itemId||!r.qty))){toast("Isi minimal satu Produk Jadi!");return;}
+    // Validasi stok tidak boleh minus untuk keluar & produksi
+    if(mode==="out"||mode==="prod"){
+      const kurang=rows.filter(r=>{
+        const it=allItems.find(x=>x.id===r.itemId);
+        if(!it)return false;
+        const stokSekarang=num(it.stok);
+        // Jika edit, kembalikan dulu stok lama
+        if(editId){
+          const old=txList.find(x=>x.id===editId);
+          const oldRow=old?(old.rows||[]).find(x=>x.itemId===r.itemId):null;
+          const stokDgOld=stokSekarang+(oldRow?num(oldRow.qty):0);
+          return stokDgOld<num(r.qty);
+        }
+        return stokSekarang<num(r.qty);
+      });
+      if(kurang.length>0){
+        const names=kurang.map(r=>r.nama).join(", ");
+        toast("❌ Stok tidak cukup: "+names);return;
+      }
+    }
     setSaving(true);
     const isEdit=!!editId;
     const docId=editId||uid();
     const outputSummary=mode==="prod"?outputRows.map(r=>r.nama).join(", "):"";
-    const doc={id:docId,invoiceNo:`INV-${Date.now().toString().slice(-7)}`,tgl:form.tgl,ref:form.ref,supplier:form.supplier,tujuan:form.tujuan,noSJ:form.noSJ||"",platNo:form.platNo||"",jenisKendaraan:form.jenisKendaraan||"",driver:form.driver||"",catatan:form.catatan,shift:form.shift,chef:form.chef,qc:form.qc,namaMenu:outputSummary,qtyProd:outputRows.reduce((s,r)=>s+num(r.qty),0),totalHPP:form.totalHPP,outputRows:outputRows.map(r=>({...r})),rows:[...rows],by:currentUser.username,createdAt:ts(),isEdited:isEdit};
+    const doc={id:docId,invoiceNo:`INV-${Date.now().toString().slice(-7)}`,tgl:form.tgl,ref:form.ref,supplier:form.supplier,tujuan:form.tujuan,noSJ:form.noSJ||"",platNo:form.platNo||"",jenisKendaraan:form.jenisKendaraan||"",driver:form.driver||"",catatan:form.catatan,shift:form.shift,chef:form.chef,qc:form.qc,namaMenu:outputSummary,qtyProd:outputRows.reduce((s,r)=>s+num(r.qty),0),totalHPP:rows.reduce((s,r)=>s+num(r.qty)*num(r.hpp),0),outputRows:outputRows.map(r=>({...r})),rows:[...rows],by:currentUser.username,createdAt:ts(),isEdited:isEdit};
     const logEntry={id:uid(),time:ts(),user:currentUser.username,type:TITLE[mode],desc:`${isEdit?"[EDIT] ":""}${rows.length} item${mode==="in"?" dari "+form.supplier:mode==="out"?" ke "+form.tujuan:" → "+outputSummary}`,isEdit:isEdit};
     let newItems;
     if(isEdit){const old=txList.find(x=>x.id===docId);const rev=old?calcNewItems(old,allItems,true):allItems;newItems=calcNewItems(doc,rev,false);}
@@ -792,7 +838,11 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
         await gas("updateItems",newItems);
         setTxList(t=>[doc,...t]);toast(`${TITLE[mode]} tersimpan!`);
       }
-      setAllItems(newItems);addLog(logEntry);setForm(ef());setRows([]);setOutputRows([]);setEditId(null);
+      setAllItems(newItems);addLog(logEntry);
+      // Handle print setelah simpan
+      if(printMode==="sj") printSJ(doc,newItems);
+      else if(printMode==="invoice") printInvoice(doc,newItems);
+      setForm(ef());setRows([]);setOutputRows([]);setEditId(null);
     }catch(e){toast("❌ Gagal: "+e.message);}
     setSaving(false);
   };
@@ -812,7 +862,7 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
     setTxList(t=>t.filter(x=>x.id!==doc.id));setAllItems(revItems);toast("Transaksi dihapus.");
   };
 
-  const items=mode==="prod"?allItems.filter(x=>x.tipe==="Bahan Baku"):allItems;
+  const items=allItems; // semua tipe bisa dipilih di baris input
 
   return(
     <div style={{padding:24,height:"100%",overflow:"auto"}}>
@@ -862,8 +912,30 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
           )}
         </Card>
 
-        <div style={{display:"flex",gap:10}}>
-          <Btn onClick={save} disabled={saving} style={{flex:1,justifyContent:"center"}}>{saving?"Menyimpan...":"💾 Simpan"}</Btn>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <Btn onClick={()=>save(null)} disabled={saving} style={{flex:1,justifyContent:"center",minWidth:140}}>
+            {saving?"Menyimpan...":"💾 Simpan"}
+          </Btn>
+          {mode==="in"&&(
+            <Btn variant="ghost" onClick={()=>save("invoice")} disabled={saving} style={{minWidth:160}}>
+              💾🖨️ Simpan + Cetak Invoice
+            </Btn>
+          )}
+          {mode==="out"&&(
+            <>
+              <Btn variant="ghost" onClick={()=>save("sj")} disabled={saving} style={{minWidth:140}}>
+                💾🖨️ Simpan + Cetak SJ
+              </Btn>
+              <Btn variant="ghost" onClick={()=>save("invoice")} disabled={saving} style={{minWidth:160}}>
+                💾🖨️ Simpan + Cetak Invoice
+              </Btn>
+            </>
+          )}
+          {mode==="prod"&&(
+            <Btn variant="ghost" onClick={()=>save("invoice")} disabled={saving} style={{minWidth:180}}>
+              💾🖨️ Simpan + Cetak Bon Produksi
+            </Btn>
+          )}
           {editId&&<Btn variant="ghost" onClick={()=>{setForm(ef());setRows([]);setOutputRows([]);setEditId(null);}}>✕ Batal</Btn>}
         </div>
       </div>
@@ -1404,40 +1476,126 @@ const LapInventori=({items})=>{
 };
 
 // ── STOK OPNAME ───────────────────────────────────────────────
-const LapStokOpname=({items})=>{
-  const exportData=()=>exportExcel(items.map(x=>({...x,stokFisik:"",selisih:"",keterangan:""})),[
-    {h:"Kode",k:"id",w:12},{h:"Nama",k:"nama",w:22},{h:"Tipe",k:"tipe",w:12},{h:"Satuan",k:"sat",w:8},
-    {h:"Stok Sistem",k:"stok",w:12},{h:"Stok Fisik",k:"stokFisik",w:12},{h:"Selisih",k:"selisih",w:10},{h:"Keterangan",k:"keterangan",w:20}
-  ],"stok_opname_"+today());
+const LapStokOpname=({items,setItems,addLog,currentUser,toast})=>{
+  const [fisik,setFisik]=useState({});
+  const [ket,setKet]=useState({});
+  const [saving,setSaving]=useState(false);
+  const [importErr,setImportErr]=useState("");
+
+  const setF=(id,v)=>setFisik(p=>({...p,[id]:v}));
+  const setK=(id,v)=>setKet(p=>({...p,[id]:v}));
+
+  const handleUpload=e=>{
+    const file=e.target.files[0];if(!file)return;
+    setImportErr("");
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const wb=XLSX.read(ev.target.result,{type:"array"});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
+        const newFisik={...fisik};const newKet={...ket};
+        rows.forEach(r=>{
+          const id=String(r.id||r.Kode||"").trim();
+          if(!id)return;
+          if(r["Stok Fisik"]!==""&&r["Stok Fisik"]!==undefined) newFisik[id]=String(r["Stok Fisik"]);
+          if(r.Keterangan) newKet[id]=String(r.Keterangan);
+        });
+        setFisik(newFisik);setKet(newKet);
+        toast("✅ Data SO berhasil diimport dari Excel!");
+      }catch(err){setImportErr("File tidak valid: "+err.message);}
+    };
+    reader.readAsArrayBuffer(file);e.target.value="";
+  };
+
+  const exportTemplate=()=>{
+    const data=items.map(x=>({id:x.id,Nama:x.nama,Tipe:x.tipe,Satuan:x.sat,"Stok Sistem":num(x.stok),"Stok Fisik":fisik[x.id]!==""&&fisik[x.id]!==undefined?Number(fisik[x.id]):"","Keterangan":ket[x.id]||""}));
+    const ws=XLSX.utils.json_to_sheet(data);
+    ws["!cols"]=[{wch:12},{wch:24},{wch:12},{wch:8},{wch:12},{wch:12},{wch:20}];
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"SO");
+    XLSX.writeFile(wb,"stok_opname_"+today()+".xlsx");
+  };
+
+  const saveAdjustment=async()=>{
+    const changed=items.filter(x=>fisik[x.id]!==""&&fisik[x.id]!==undefined&&Number(fisik[x.id])!==num(x.stok));
+    if(!changed.length){toast("Tidak ada perubahan stok.");return;}
+    if(!confirm(`Simpan penyesuaian untuk ${changed.length} item? Stok sistem akan diupdate sesuai stok fisik.`))return;
+    setSaving(true);
+    const newItems=items.map(x=>{
+      const f=fisik[x.id];
+      if(f===""||f===undefined||Number(f)===num(x.stok))return x;
+      return{...x,stok:Number(f)};
+    });
+    const res=await gas("updateItems",newItems);
+    if(res&&res.error){toast("❌ "+res.error);setSaving(false);return;}
+    setItems(newItems);
+    addLog({id:uid(),time:ts(),user:currentUser?.username||"—",type:"Stok Opname",desc:`Penyesuaian ${changed.length} item dari SO`,isEdit:false});
+    toast(`✅ ${changed.length} item stok disesuaikan!`);
+    setFisik({});setKet({});setSaving(false);
+  };
+
+  const hasInput=Object.values(fisik).some(v=>v!==""&&v!==undefined);
+  const selisihItems=items.map(x=>{
+    const f=fisik[x.id];
+    const s=num(x.stok);
+    const fNum=f!==""&&f!==undefined?Number(f):null;
+    const sel=fNum!==null?fNum-s:null;
+    return{...x,fisik:fNum,selisih:sel};
+  });
+
   return(
     <div style={{padding:24,overflow:"auto",height:"100%"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20,flexWrap:"wrap",gap:12}}>
-        <div style={{fontWeight:700,fontSize:20}}>📋 Form Stok Opname</div>
-        <div style={{display:"flex",gap:8}}>
-          <Btn variant="ghost" onClick={exportData}>⬇️ Export Excel (isi stok fisik)</Btn>
+        <div style={{fontWeight:700,fontSize:20}}>📋 Stok Opname</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <Btn variant="ghost" onClick={exportTemplate}>⬇️ Export Template Excel</Btn>
+          <label style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#3b82f6",color:"#fff",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:500}}>
+            📥 Upload Hasil SO
+            <input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={handleUpload}/>
+          </label>
           <Btn variant="ghost" onClick={()=>window.print()}>🖨️ Print</Btn>
+          {hasInput&&<Btn onClick={saveAdjustment} disabled={saving} style={{background:"#10b981",color:"#fff"}}>{saving?"Menyimpan...":"✅ Simpan Penyesuaian"}</Btn>}
         </div>
       </div>
-      <div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#92400e"}}>
-        💡 Export ke Excel, isi kolom <strong>Stok Fisik</strong> berdasarkan hasil hitung fisik di gudang, lalu hitung selisihnya.
+      {importErr&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:8,padding:"10px 14px",marginBottom:12,color:"#dc2626",fontSize:13}}>⚠️ {importErr}</div>}
+      <div style={{background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#1d4ed8"}}>
+        💡 Isi kolom <b>Stok Fisik</b> langsung di tabel, atau export Excel → isi → upload kembali. Klik <b>Simpan Penyesuaian</b> untuk update stok sistem.
       </div>
       <Card style={{padding:0}}>
         <div style={{overflow:"auto"}}>
           <table>
-            <thead><tr><th>Kode</th><th>Nama</th><th>Tipe</th><th>Sat</th><th>Stok Sistem</th><th style={{background:"#f0fdf4",color:"#166534"}}>Stok Fisik</th><th style={{background:"#fef9c3",color:"#713f12"}}>Selisih</th><th>Keterangan</th></tr></thead>
+            <thead><tr>
+              <th>Kode</th><th>Nama</th><th>Tipe</th><th>Sat</th>
+              <th>Stok Sistem</th>
+              <th style={{background:"#f0fdf4",color:"#166534",minWidth:110}}>Stok Fisik</th>
+              <th style={{background:"#fef9c3",color:"#713f12",minWidth:80}}>Selisih</th>
+              <th style={{minWidth:140}}>Keterangan</th>
+            </tr></thead>
             <tbody>
-              {items.map((x,i)=>(
-                <tr key={i}>
-                  <td style={{fontFamily:"monospace",fontSize:11,color:"#6b7280"}}>{x.id}</td>
-                  <td style={{fontWeight:500}}>{x.nama}</td>
-                  <td><Badge color={x.tipe==="Produk Jadi"?"purple":"blue"}>{x.tipe}</Badge></td>
-                  <td>{x.sat}</td>
-                  <td style={{fontWeight:700}}>{num(x.stok)}</td>
-                  <td style={{background:"#f0fdf4",minWidth:80}}>&nbsp;</td>
-                  <td style={{background:"#fef9c3",minWidth:80}}>&nbsp;</td>
-                  <td style={{minWidth:120}}>&nbsp;</td>
-                </tr>
-              ))}
+              {selisihItems.map((x,i)=>{
+                const hasVal=x.fisik!==null;
+                const selColor=!hasVal?"#9ca3af":x.selisih===0?"#10b981":x.selisih>0?"#3b82f6":"#ef4444";
+                return(
+                  <tr key={i} style={{background:hasVal&&x.selisih!==0?"#fffbeb":""}}>
+                    <td style={{fontFamily:"monospace",fontSize:11,color:"#6b7280"}}>{x.id}</td>
+                    <td style={{fontWeight:500}}>{x.nama}</td>
+                    <td><Badge color={x.tipe==="Produk Jadi"?"purple":"blue"}>{x.tipe}</Badge></td>
+                    <td>{x.sat}</td>
+                    <td style={{fontWeight:700}}>{num(x.stok)}</td>
+                    <td style={{background:"#f0fdf4",padding:"4px 8px"}}>
+                      <input type="number" value={fisik[x.id]??""} onChange={e=>setF(x.id,e.target.value)}
+                        placeholder="isi..." style={{width:80,border:"1px solid #86efac",borderRadius:6,padding:"4px 8px",fontSize:13,background:"transparent"}}/>
+                    </td>
+                    <td style={{background:"#fef9c3",fontWeight:600,color:selColor,textAlign:"center"}}>
+                      {hasVal?(x.selisih>0?"+":"")+x.selisih:"—"}
+                    </td>
+                    <td>
+                      <input value={ket[x.id]||""} onChange={e=>setK(x.id,e.target.value)}
+                        placeholder="opsional" style={{width:130,fontSize:12}}/>
+                    </td>
+                  </tr>
+                );
+              })}
               {items.length===0&&<tr><td colSpan={8} style={{textAlign:"center",color:"#9ca3af",padding:32}}>Belum ada item</td></tr>}
             </tbody>
           </table>
@@ -1553,7 +1711,7 @@ const App=()=>{
       case "lap-hpp":        return <LapHPPProduksi txProd={txProd}/>;
       case "lap-spoilage":   return <LapSpoilage txSpoilage={txSpoilage}/>;
       case "lap-inventori":  return <LapInventori items={items}/>;
-      case "lap-opname":     return <LapStokOpname items={items}/>;
+      case "lap-opname":     return <LapStokOpname items={items} setItems={setItems} addLog={addLog} currentUser={currentUser} toast={showToast}/>;
       case "db-item":     return <ItemDB items={items} setItems={setItems} toast={showToast} addLog={addLog}/>;
       case "db-supplier": return <SupDB suppliers={suppliers} setSuppliers={setSuppliers} toast={showToast} addLog={addLog}/>;
       case "users":       return <UsersPage users={users} setUsers={setUsers} currentUser={currentUser} toast={showToast}/>;
