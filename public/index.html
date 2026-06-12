@@ -109,23 +109,45 @@ const Toast=({msg,onDone})=>{
 // ── AUTOCOMPLETE ─────────────────────────────────────────────
 const AC=({value,onChange,onSelect,items,placeholder,renderItem,disabled})=>{
   const [open,setOpen]=useState(false);
+  const [idx,setIdx]=useState(-1);
   const filtered=((value||"").trim()===""?items:items.filter(it=>(it.nama||"").toLowerCase().includes((value||"").toLowerCase()))).slice(0,10);
+
+  const select=it=>{onSelect&&onSelect(it);onChange&&onChange(it.nama);setOpen(false);setIdx(-1);};
+
+  const onKey=e=>{
+    if(!open){if(e.key==="ArrowDown"){setOpen(true);setIdx(0);e.preventDefault();}return;}
+    if(e.key==="ArrowDown"){setIdx(i=>Math.min(i+1,filtered.length-1));e.preventDefault();}
+    else if(e.key==="ArrowUp"){setIdx(i=>Math.max(i-1,0));e.preventDefault();}
+    else if(e.key==="Enter"||e.key==="Tab"){
+      if(idx>=0&&filtered[idx]){select(filtered[idx]);if(e.key==="Tab")return;}
+      else setOpen(false);
+      if(e.key==="Enter")e.preventDefault();
+    }
+    else if(e.key==="Escape"){setOpen(false);setIdx(-1);}
+  };
+
   return(
     <div style={{position:"relative"}}>
       <input value={value||""} disabled={disabled} placeholder={placeholder||"Cari..."}
-        onChange={e=>{onChange&&onChange(e.target.value);setOpen(true);}}
+        onChange={e=>{onChange&&onChange(e.target.value);setOpen(true);setIdx(-1);}}
         onFocus={()=>setOpen(true)}
-        onBlur={()=>setTimeout(()=>setOpen(false),200)}/>
+        onBlur={()=>setTimeout(()=>{setOpen(false);setIdx(-1);},200)}
+        onKeyDown={onKey}/>
       {open&&filtered.length>0&&(
         <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:8,zIndex:200,maxHeight:240,overflow:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.12)"}}>
-          {filtered.map(it=>(
-            <div key={it.id} onMouseDown={()=>{onSelect&&onSelect(it);setOpen(false);}}
-              style={{padding:"9px 12px",cursor:"pointer",borderBottom:"1px solid #f3f4f6"}}
-              onMouseEnter={e=>e.currentTarget.style.background="#f8f9fb"}
-              onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+          {filtered.map((it,i)=>(
+            <div key={it.id} onMouseDown={()=>select(it)}
+              style={{padding:"9px 12px",cursor:"pointer",borderBottom:"1px solid #f3f4f6",
+                background:i===idx?"#eff6ff":"#fff",
+                borderLeft:i===idx?"3px solid #3b82f6":"3px solid transparent"}}
+              onMouseEnter={()=>setIdx(i)}
+              onMouseLeave={()=>setIdx(-1)}>
               {renderItem?renderItem(it):<span style={{fontSize:13}}>{it.nama}</span>}
             </div>
           ))}
+          <div style={{padding:"5px 12px",fontSize:11,color:"#9ca3af",borderTop:"1px solid #f3f4f6",background:"#fafafa"}}>
+            ↑↓ navigasi · Enter/Tab pilih · Esc tutup
+          </div>
         </div>
       )}
     </div>
