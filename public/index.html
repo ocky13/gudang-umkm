@@ -58,8 +58,9 @@ const gas=(fnName,payload)=>fetch("/api/"+fnName,{
 }).then(r=>r.json());
 
 // ── UI PRIMITIVES ────────────────────────────────────────────
-const Card=({children,style})=>(
-  <div style={{background:"#fff",border:"1px solid #e9ecef",borderRadius:12,padding:20,...style}}>{children}</div>
+const Card=({children,style,onClick,onMouseEnter,onMouseLeave})=>(
+  <div onClick={onClick} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}
+    style={{background:"#fff",border:"1px solid #e9ecef",borderRadius:12,padding:20,...style,cursor:onClick?"pointer":undefined}}>{children}</div>
 );
 
 const Btn=({children,onClick,variant="primary",size="md",disabled,style,type})=>{
