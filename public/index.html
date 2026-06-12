@@ -1767,9 +1767,9 @@ const App=()=>{
     const p={items,setItems,suppliers,setSuppliers,currentUser,addLog,toast:showToast};
     switch(page){
       case "dashboard":   return <Dashboard items={items} txMasuk={txMasuk} txKeluar={txKeluar} txProd={txProd} logs={logs}/>;
-      case "masuk":       return <TxForm mode="in"   allItems={items} setAllItems={setItems} suppliers={suppliers} currentUser={currentUser} addLog={addLog} toast={showToast} txList={txMasuk}   setTxList={setTxMasuk}   sheetKey="txMasuk"/>;
-      case "keluar":      return <TxForm mode="out"  allItems={items} setAllItems={setItems} suppliers={suppliers} currentUser={currentUser} addLog={addLog} toast={showToast} txList={txKeluar}  setTxList={setTxKeluar}  sheetKey="txKeluar"/>;
-      case "produksi":    return <TxForm mode="prod" allItems={items} setAllItems={setItems} suppliers={suppliers} currentUser={currentUser} addLog={addLog} toast={showToast} txList={txProd}    setTxList={setTxProd}    sheetKey="txProd"/>;
+      case "masuk":       return <TxForm key="in"   mode="in"   allItems={items} setAllItems={setItems} suppliers={suppliers} currentUser={currentUser} addLog={addLog} toast={showToast} txList={txMasuk}   setTxList={setTxMasuk}   sheetKey="txMasuk"/>;
+      case "keluar":      return <TxForm key="out"  mode="out"  allItems={items} setAllItems={setItems} suppliers={suppliers} currentUser={currentUser} addLog={addLog} toast={showToast} txList={txKeluar}  setTxList={setTxKeluar}  sheetKey="txKeluar"/>;
+      case "produksi":    return <TxForm key="prod" mode="prod" allItems={items} setAllItems={setItems} suppliers={suppliers} currentUser={currentUser} addLog={addLog} toast={showToast} txList={txProd}    setTxList={setTxProd}    sheetKey="txProd"/>;
       case "stok":        return <StokPage items={items}/>;
       case "kartu-stok":  return <KartuStokPage items={items} txMasuk={txMasuk} txKeluar={txKeluar} txProd={txProd} txSpoilage={txSpoilage}/>;
       case "spoilage":    return <SpoilagePage allItems={items} setAllItems={setItems} currentUser={currentUser} addLog={addLog} toast={showToast} txList={txSpoilage} setTxList={setTxSpoilage}/>;
