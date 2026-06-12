@@ -866,12 +866,15 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
   const items=allItems; // semua tipe bisa dipilih di baris input
 
   return(
-    <div style={{padding:24,height:"100%",overflow:"auto"}}>
-      {/* Form */}
-      <div style={{maxWidth:700,display:"flex",flexDirection:"column",gap:16}}>
-        <div style={{fontWeight:700,fontSize:20}}>{TITLE[mode]}</div>
+    <div style={{padding:24,height:"100%",overflow:"hidden",display:"flex",gap:20}}>
+      {/* Kolom Kiri - Form */}
+      <div style={{flex:"0 0 640px",overflowY:"auto",display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{fontWeight:700,fontSize:20,display:"flex",alignItems:"center",gap:10}}>
+          {mode==="in"?"📥":mode==="out"?"📤":"🏭"} {TITLE[mode]}
+          {editId&&<Badge color="yellow">Mode Edit</Badge>}
+        </div>
         <Card>
-          <div style={{fontWeight:600,marginBottom:14,fontSize:14}}>{editId?"✏️ Edit Transaksi":"Form Baru"}</div>
+          <div style={{fontWeight:600,marginBottom:14,fontSize:13,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em"}}>Informasi Transaksi</div>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               <FG label="Tanggal" required><input type="date" value={form.tgl} onChange={e=>setForm(f=>({...f,tgl:e.target.value}))}/></FG>
@@ -901,44 +904,90 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
         </Card>
 
         <Card>
-          <div style={{fontWeight:600,marginBottom:12,fontSize:14}}>
-            {mode==="prod"?"🧪 Bahan Baku Digunakan":"📦 Item"}
+          <div style={{fontWeight:600,marginBottom:12,fontSize:13,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em"}}>
+            {mode==="prod"?"🧪 Bahan Baku Digunakan":"📦 Detail Item"}
           </div>
           <RowTable rows={rows} setRows={setRows} items={items} mode={mode}/>
           {mode==="prod"&&(
             <>
-              <div style={{fontWeight:600,margin:"16px 0 12px",fontSize:14}}>🏭 Produk Jadi Dihasilkan</div>
+              <div style={{fontWeight:600,margin:"20px 0 12px",fontSize:13,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em",borderTop:"1px solid #f0f2f5",paddingTop:16}}>🏭 Produk Jadi Dihasilkan</div>
               <OutputRowTable outputRows={outputRows} setOutputRows={setOutputRows} items={allItems}/>
             </>
           )}
         </Card>
 
-        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        {/* Ringkasan nilai */}
+        {rows.length>0&&(
+          <Card style={{background:"#f8f9fb",border:"1px solid #e9ecef"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+              <div style={{fontSize:13,color:"#6b7280"}}>Total {rows.length} baris item</div>
+              {mode==="in"&&<div style={{fontWeight:700,fontSize:16,color:"#3b82f6"}}>Total: {rp(rows.reduce((s,r)=>s+num(r.qty)*num(r.harga),0))}</div>}
+              {mode==="out"&&<div style={{fontWeight:700,fontSize:16,color:"#ef4444"}}>Total HPP Keluar: {rp(rows.reduce((s,r)=>s+num(r.qty)*num(r.hpp),0))}</div>}
+              {mode==="prod"&&<div style={{fontWeight:700,fontSize:16,color:"#8b5cf6"}}>Total HPP Bahan: {rp(rows.reduce((s,r)=>s+num(r.qty)*num(r.hpp),0))}</div>}
+            </div>
+          </Card>
+        )}
+
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",paddingBottom:24}}>
           <Btn onClick={()=>save(null)} disabled={saving} style={{flex:1,justifyContent:"center",minWidth:140}}>
             {saving?"Menyimpan...":"💾 Simpan"}
           </Btn>
           {mode==="in"&&(
-            <Btn variant="ghost" onClick={()=>save("invoice")} disabled={saving} style={{minWidth:160}}>
-              💾🖨️ Simpan + Cetak Invoice
+            <Btn variant="ghost" onClick={()=>save("invoice")} disabled={saving}>
+              🖨️ Simpan + Invoice
             </Btn>
           )}
           {mode==="out"&&(
             <>
-              <Btn variant="ghost" onClick={()=>save("sj")} disabled={saving} style={{minWidth:140}}>
-                💾🖨️ Simpan + Cetak SJ
-              </Btn>
-              <Btn variant="ghost" onClick={()=>save("invoice")} disabled={saving} style={{minWidth:160}}>
-                💾🖨️ Simpan + Cetak Invoice
-              </Btn>
+              <Btn variant="ghost" onClick={()=>save("sj")} disabled={saving}>🖨️ Simpan + SJ</Btn>
+              <Btn variant="ghost" onClick={()=>save("invoice")} disabled={saving}>🖨️ Simpan + Invoice</Btn>
             </>
           )}
           {mode==="prod"&&(
-            <Btn variant="ghost" onClick={()=>save("invoice")} disabled={saving} style={{minWidth:180}}>
-              💾🖨️ Simpan + Cetak Bon Produksi
-            </Btn>
+            <Btn variant="ghost" onClick={()=>save("invoice")} disabled={saving}>🖨️ Simpan + Bon</Btn>
           )}
-          {editId&&<Btn variant="ghost" onClick={()=>{setForm(ef());setRows([]);setOutputRows([]);setEditId(null);}}>✕ Batal</Btn>}
+          {editId&&<Btn variant="danger" onClick={()=>{setForm(ef());setRows([]);setOutputRows([]);setEditId(null);}}>✕ Batal Edit</Btn>}
         </div>
+      </div>
+
+      {/* Kolom Kanan - Riwayat */}
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:12,minWidth:0}}>
+        <div style={{fontWeight:600,fontSize:14,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em",flexShrink:0,paddingTop:4}}>
+          Riwayat {TITLE[mode]}
+          <span style={{marginLeft:8,background:"#f1f5f9",borderRadius:12,padding:"2px 8px",fontSize:11,fontWeight:500,color:"#64748b"}}>{txList.length}</span>
+        </div>
+        {txList.length===0&&(
+          <Card style={{textAlign:"center",padding:40,color:"#9ca3af"}}>
+            <div style={{fontSize:32,marginBottom:8}}>📭</div>
+            <div>Belum ada transaksi</div>
+          </Card>
+        )}
+        {txList.slice(0,30).map(tx=>(
+          <Card key={tx.id} style={{padding:14,cursor:"pointer"}} onClick={()=>startEdit(tx)}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:13,fontFamily:"monospace"}}>{tx.invoiceNo}</div>
+                <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>{fmtTgl(tx.tgl)} · {tx.by}</div>
+              </div>
+              <div style={{display:"flex",gap:4,flexShrink:0}}>
+                {tx.isEdited&&<Badge color="yellow">Edit</Badge>}
+                <button onClick={e=>{e.stopPropagation();del(tx);}} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:16,padding:"2px 4px",lineHeight:1}}>×</button>
+              </div>
+            </div>
+            {mode==="in"&&tx.supplier&&<div style={{fontSize:12,color:"#6b7280",marginBottom:6}}>📦 {tx.supplier}</div>}
+            {mode==="out"&&tx.tujuan&&<div style={{fontSize:12,color:"#6b7280",marginBottom:6}}>🚚 {tx.tujuan} {tx.driver&&"· "+tx.driver}</div>}
+            {mode==="prod"&&tx.namaMenu&&<div style={{fontSize:12,color:"#6b7280",marginBottom:6}}>🍳 {tx.namaMenu} · {tx.shift}</div>}
+            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+              {(tx.rows||[]).slice(0,4).map((r,i)=>(
+                <span key={i} style={{background:"#f1f5f9",borderRadius:6,padding:"2px 8px",fontSize:11,color:"#374151"}}>
+                  {r.nama} <b>{num(r.qty)}</b>
+                </span>
+              ))}
+              {(tx.rows||[]).length>4&&<span style={{fontSize:11,color:"#9ca3af"}}>+{(tx.rows||[]).length-4} lainnya</span>}
+            </div>
+            <div style={{marginTop:8,fontSize:11,color:"#9ca3af",textAlign:"right"}}>Klik untuk edit</div>
+          </Card>
+        ))}
       </div>
     </div>
   );
