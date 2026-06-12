@@ -691,13 +691,17 @@ const RowTable=({rows,setRows,items,mode})=>{
 
 // ── OUTPUT ROW TABLE (produk jadi hasil produksi) ────────────
 const OutputRowTable=({outputRows,setOutputRows,items})=>{
-  const prodItems=items.filter(x=>x.tipe==="Produk Jadi");
   const add=()=>setOutputRows(r=>[...r,{_id:uid(),itemId:"",nama:"",sat:"",qty:1,note:""}]);
   const del=id=>setOutputRows(r=>r.filter(x=>x._id!==id));
   const upd=(id,f,v)=>setOutputRows(r=>r.map(x=>x._id!==id?x:{...x,[f]:v}));
   const pick=(rowId,item)=>setOutputRows(r=>r.map(x=>x._id!==rowId?x:{...x,itemId:item.id,nama:item.nama,sat:item.sat}));
   return(
     <div>
+      {items.filter(x=>x.tipe==="Produk Jadi").length===0&&(
+        <div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:10,fontSize:12,color:"#92400e"}}>
+          ⚠️ Belum ada item bertipe <b>Produk Jadi</b> di Master Barang. Semua item ditampilkan. Tambahkan item Produk Jadi di menu <b>Master Barang</b> agar lebih akurat.
+        </div>
+      )}
       <div style={{overflow:"auto",border:"1px solid #e9ecef",borderRadius:10,marginBottom:10}}>
         <table>
           <thead><tr>
@@ -711,13 +715,19 @@ const OutputRowTable=({outputRows,setOutputRows,items})=>{
           <tbody>
             {outputRows.length===0&&<tr><td colSpan={6} style={{textAlign:"center",color:"#9ca3af",padding:24,fontSize:13}}>Klik "+ Tambah Produk Jadi"</td></tr>}
             {outputRows.map(row=>{
-              const it=prodItems.find(x=>x.id===row.itemId);
+              const it=items.find(x=>x.id===row.itemId);
               return(
                 <tr key={row._id}>
                   <td>
-                    <AC value={row.nama} onChange={v=>upd(row._id,"nama",v)} onSelect={item=>pick(row._id,item)} items={prodItems}
-                      renderItem={it=><div><div style={{fontSize:13,fontWeight:500}}>{it.nama}</div><div style={{fontSize:11,color:"#9ca3af"}}>Stok: {num(it.stok)} {it.sat}</div></div>}
-                      placeholder="Cari produk jadi..."/>
+                    <AC value={row.nama} onChange={v=>upd(row._id,"nama",v)} onSelect={item=>pick(row._id,item)} items={items}
+                      renderItem={it=><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:500}}>{it.nama}</div>
+                          <div style={{fontSize:11,color:"#9ca3af"}}>Stok: {num(it.stok)} {it.sat}</div>
+                        </div>
+                        <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:it.tipe==="Produk Jadi"?"#f3e8ff":"#dbeafe",color:it.tipe==="Produk Jadi"?"#7c3aed":"#1d4ed8"}}>{it.tipe}</span>
+                      </div>}
+                      placeholder="Cari item hasil produksi..."/>
                   </td>
                   <td><input value={row.sat} readOnly style={{width:50,textAlign:"center"}}/></td>
                   <td><input type="number" value={row.qty} min={1} onChange={e=>upd(row._id,"qty",Math.max(1,num(e.target.value)||1))} style={{width:70}}/></td>
@@ -848,14 +858,14 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
     setSaving(false);
   };
 
-  const formTopRef=useRef();
+  const leftColRef=useRef();
   const startEdit=doc=>{
     setForm({tgl:doc.tgl,ref:doc.ref||"",noSJ:doc.noSJ||"",supplier:doc.supplier||"",tujuan:doc.tujuan||"",platNo:doc.platNo||"",jenisKendaraan:doc.jenisKendaraan||"",driver:doc.driver||"",catatan:doc.catatan||"",shift:doc.shift||"Pagi (06-14)",chef:doc.chef||"",qc:doc.qc||"Lulus",totalHPP:doc.totalHPP||""});
     setRows((doc.rows||[]).map(r=>({...r,_id:r._id||uid()})));
     setOutputRows((doc.outputRows||[]).map(r=>({...r,_id:r._id||uid()})));
     setEditId(doc.id);
     toast("✏️ Mode edit aktif — form sudah terisi.");
-    setTimeout(()=>{if(formTopRef.current)formTopRef.current.scrollIntoView({behavior:"smooth",block:"start"});},100);
+    setTimeout(()=>{if(leftColRef.current)leftColRef.current.scrollTop=0;},100);
   };
 
   const del=async(doc)=>{
@@ -871,7 +881,7 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
   return(
     <div style={{padding:24,height:"100%",overflow:"hidden",display:"flex",gap:20}}>
       {/* Kolom Kiri - Form */}
-      <div ref={formTopRef} style={{flex:"0 0 640px",overflowY:"auto",display:"flex",flexDirection:"column",gap:16}}>
+      <div ref={leftColRef} style={{flex:"0 0 640px",overflowY:"auto",display:"flex",flexDirection:"column",gap:16}}>
         <div style={{fontWeight:700,fontSize:20,display:"flex",alignItems:"center",gap:10}}>
           {mode==="in"?"📥":mode==="out"?"📤":"🏭"} {TITLE[mode]}
           {editId&&<Badge color="yellow">Mode Edit</Badge>}
@@ -966,7 +976,10 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
           </Card>
         )}
         {txList.slice(0,30).map(tx=>(
-          <Card key={tx.id} style={{padding:14,cursor:"pointer"}} onClick={()=>startEdit(tx)}>
+          <Card key={tx.id} style={{padding:14,cursor:"pointer",transition:"box-shadow 0.15s,border-color 0.15s",border:editId===tx.id?"1.5px solid #3b82f6":"1px solid #e9ecef"}}
+            onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,0.1)";e.currentTarget.style.borderColor="#3b82f6";}}
+            onMouseLeave={e=>{e.currentTarget.style.boxShadow="";e.currentTarget.style.borderColor=editId===tx.id?"#3b82f6":"#e9ecef";}}
+            onClick={()=>startEdit(tx)}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:600,fontSize:13,fontFamily:"monospace"}}>{tx.invoiceNo}</div>
