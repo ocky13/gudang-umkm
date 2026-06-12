@@ -863,12 +863,20 @@ const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txLi
 
   const leftColRef=useRef();
   const startEdit=doc=>{
-    setForm({tgl:doc.tgl,ref:doc.ref||"",noSJ:doc.noSJ||"",supplier:doc.supplier||"",tujuan:doc.tujuan||"",platNo:doc.platNo||"",jenisKendaraan:doc.jenisKendaraan||"",driver:doc.driver||"",catatan:doc.catatan||"",shift:doc.shift||"Pagi (06-14)",chef:doc.chef||"",qc:doc.qc||"Lulus",totalHPP:doc.totalHPP||""});
-    setRows((doc.rows||[]).map(r=>({...r,_id:r._id||uid()})));
-    setOutputRows((doc.outputRows||[]).map(r=>({...r,_id:r._id||uid()})));
-    setEditId(doc.id);
-    toast("✏️ Mode edit aktif — form sudah terisi.");
-    setTimeout(()=>{if(leftColRef.current)leftColRef.current.scrollTop=0;},100);
+    // Reset dulu ke kosong
+    setEditId(null);
+    setRows([]);
+    setOutputRows([]);
+    setForm({tgl:"",ref:"",noSJ:"",supplier:"",tujuan:"",platNo:"",jenisKendaraan:"",driver:"",catatan:"",shift:"Pagi (06-14)",chef:"",qc:"Lulus",totalHPP:""});
+    // Tunggu sebentar lalu isi dengan data baru — ini memaksa key berubah dan input di-remount
+    setTimeout(()=>{
+      setForm({tgl:doc.tgl||tod(),ref:doc.ref||"",noSJ:doc.noSJ||"",supplier:doc.supplier||"",tujuan:doc.tujuan||"",platNo:doc.platNo||"",jenisKendaraan:doc.jenisKendaraan||"",driver:doc.driver||"",catatan:doc.catatan||"",shift:doc.shift||"Pagi (06-14)",chef:doc.chef||"",qc:doc.qc||"Lulus",totalHPP:doc.totalHPP||""});
+      setRows((doc.rows||[]).map(r=>({...r,_id:r._id||uid()})));
+      setOutputRows((doc.outputRows||[]).map(r=>({...r,_id:r._id||uid()})));
+      setEditId(doc.id);
+      if(leftColRef.current) leftColRef.current.scrollTop=0;
+      toast("✏️ Mode edit aktif");
+    },50);
   };
 
   const del=async(doc)=>{
