@@ -1696,26 +1696,28 @@ const LapStokOpname=({items,setItems,addLog,currentUser,toast})=>{
 };
 
 const NAV=[
-  {id:"dashboard",label:"Dashboard",icon:"📊"},
-  {id:"masuk",label:"Barang Masuk",icon:"📥"},
-  {id:"keluar",label:"Barang Keluar",icon:"📤"},
-  {id:"produksi",label:"Produksi",icon:"🏭"},
-  {id:"stok",label:"Monitor Stok",icon:"📦"},
-  {id:"kartu-stok",label:"Kartu Stok",icon:"📋"},
-  {id:"spoilage",label:"Spoilage",icon:"🗑"},
-  null,
-  {id:"lap-penerimaan",label:"Lap. Penerimaan",icon:"📥"},
-  {id:"lap-pengiriman",label:"Lap. Pengiriman",icon:"📤"},
-  {id:"lap-mutasi",label:"Mutasi Stok",icon:"🔄"},
-  {id:"lap-hpp",label:"HPP Produksi",icon:"🏭"},
-  {id:"lap-spoilage",label:"Lap. Spoilage",icon:"🗑"},
-  {id:"lap-inventori",label:"Nilai Inventori",icon:"💰"},
-  {id:"lap-opname",label:"Stok Opname",icon:"📋"},
-  null,
-  {id:"db-item",label:"Master Barang",icon:"🗃"},
-  {id:"db-supplier",label:"Master Supplier",icon:"🤝"},
-  {id:"users",label:"Kelola User",icon:"👤"},
-  {id:"activity-log",label:"Activity Log",icon:"📜"},
+  {section:"TRANSAKSI"},
+  {id:"masuk",    label:"Barang Masuk",  icon:"📥"},
+  {id:"keluar",   label:"Barang Keluar", icon:"📤"},
+  {id:"produksi", label:"Produksi",      icon:"🏭"},
+  {id:"spoilage", label:"Spoilage",      icon:"🗑️"},
+  {section:"STOK"},
+  {id:"dashboard",   label:"Dashboard",   icon:"📊"},
+  {id:"stok",        label:"Monitor Stok",icon:"📦"},
+  {id:"kartu-stok",  label:"Kartu Stok",  icon:"📋"},
+  {section:"LAPORAN"},
+  {id:"lap-penerimaan", label:"Penerimaan",     icon:"📥"},
+  {id:"lap-pengiriman", label:"Pengiriman",     icon:"📤"},
+  {id:"lap-mutasi",     label:"Mutasi Stok",    icon:"🔄"},
+  {id:"lap-hpp",        label:"HPP Produksi",   icon:"🏭"},
+  {id:"lap-spoilage",   label:"Spoilage",       icon:"🗑️"},
+  {id:"lap-inventori",  label:"Nilai Inventori",icon:"💰"},
+  {id:"lap-opname",     label:"Stok Opname",    icon:"📋"},
+  {section:"MASTER & ADMIN"},
+  {id:"db-item",       label:"Master Barang",  icon:"🗃️"},
+  {id:"db-supplier",   label:"Master Supplier",icon:"🤝"},
+  {id:"users",         label:"Kelola User",    icon:"👤"},
+  {id:"activity-log",  label:"Activity Log",   icon:"📜"},
 ];
 
 // ── APP ──────────────────────────────────────────────────────
@@ -1816,25 +1818,38 @@ const App=()=>{
   return(
     <div style={{display:"flex",height:"100vh",overflow:"hidden",background:"#F8F9FB"}}>
       {/* Sidebar */}
-      <div style={{width:sidebarOpen?220:56,background:"#fff",borderRight:"1px solid #e9ecef",display:"flex",flexDirection:"column",transition:"width .2s ease",flexShrink:0,overflow:"hidden"}}>
-        <div style={{padding:"14px 12px",borderBottom:"1px solid #e9ecef",display:"flex",alignItems:"center",gap:10}}>
-          <button onClick={()=>setSidebarOpen(o=>!o)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,flexShrink:0,color:"#374151"}}>☰</button>
-          {sidebarOpen&&<span style={{fontWeight:700,fontSize:14,whiteSpace:"nowrap",overflow:"hidden"}}>🏭 Gudang UMKM</span>}
+      <div style={{width:sidebarOpen?230:56,background:"#18181b",borderRight:"1px solid #27272a",display:"flex",flexDirection:"column",transition:"width .2s ease",flexShrink:0,overflow:"hidden"}}>
+        <div style={{padding:"14px 12px",borderBottom:"1px solid #27272a",display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>setSidebarOpen(o=>!o)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,flexShrink:0,color:"#a1a1aa"}}>☰</button>
+          {sidebarOpen&&<span style={{fontWeight:700,fontSize:14,whiteSpace:"nowrap",overflow:"hidden",color:"#fff"}}>🏭 Gudang UMKM</span>}
         </div>
-        <div style={{flex:1,overflow:"auto",padding:"8px 6px"}}>
-          {NAV.map((item,i)=>item===null?(
-            <div key={i} style={{height:1,background:"#f3f4f6",margin:"8px 6px"}}/>
+        <div style={{flex:1,overflow:"auto",padding:"8px 8px"}}>
+          {NAV.map((item,i)=>item.section?(
+            sidebarOpen
+              ? <div key={i} style={{fontSize:10,fontWeight:700,color:"#52525b",letterSpacing:"0.1em",padding:"14px 10px 4px",userSelect:"none"}}>{item.section}</div>
+              : <div key={i} style={{height:1,background:"#27272a",margin:"8px 4px"}}/>
           ):(
             <button key={item.id} onClick={()=>setPage(item.id)}
-              style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,border:"none",background:page===item.id?"#eff6ff":"transparent",color:page===item.id?"#3b82f6":"#374151",cursor:"pointer",fontWeight:page===item.id?600:400,fontSize:13,textAlign:"left",transition:"background .15s",whiteSpace:"nowrap"}}>
-              <span style={{fontSize:16,flexShrink:0}}>{item.icon}</span>
+              style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:8,border:"none",
+                background:page===item.id?"#3b82f6":"transparent",
+                color:page===item.id?"#fff":"#a1a1aa",
+                cursor:"pointer",fontWeight:page===item.id?600:400,fontSize:13,
+                textAlign:"left",transition:"background .15s, color .15s",whiteSpace:"nowrap"}}
+              onMouseEnter={e=>{if(page!==item.id){e.currentTarget.style.background="#27272a";e.currentTarget.style.color="#fff";}}}
+              onMouseLeave={e=>{if(page!==item.id){e.currentTarget.style.background="transparent";e.currentTarget.style.color="#a1a1aa";}}}>
+              <span style={{fontSize:15,flexShrink:0,opacity:page===item.id?1:0.8}}>{item.icon}</span>
               {sidebarOpen&&<span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{item.label}</span>}
             </button>
           ))}
         </div>
-        <div style={{padding:"12px 8px",borderTop:"1px solid #e9ecef"}}>
-          {sidebarOpen&&<div style={{fontSize:12,color:"#6b7280",marginBottom:8,padding:"0 4px"}}>@{currentUser.username} · {currentUser.role}</div>}
-          <button onClick={logout} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,border:"none",background:"transparent",color:"#ef4444",cursor:"pointer",fontSize:13}}>
+        <div style={{padding:"12px 8px",borderTop:"1px solid #27272a"}}>
+          {sidebarOpen&&<div style={{fontSize:11,color:"#52525b",marginBottom:8,padding:"0 6px",display:"flex",alignItems:"center",gap:6}}>
+            <span style={{background:"#27272a",borderRadius:20,padding:"2px 8px",color:"#a1a1aa"}}>@{currentUser.username}</span>
+            <span style={{background:"#1e3a5f",borderRadius:20,padding:"2px 8px",color:"#93c5fd",fontSize:10}}>{currentUser.role}</span>
+          </div>}
+          <button onClick={logout} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:8,border:"none",background:"transparent",color:"#ef4444",cursor:"pointer",fontSize:13}}
+            onMouseEnter={e=>e.currentTarget.style.background="#27272a"}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
             <span>🚪</span>{sidebarOpen&&<span>Keluar</span>}
           </button>
         </div>
