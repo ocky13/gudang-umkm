@@ -764,6 +764,7 @@ const printInvoice=(tx,items)=>{
   </body></html>`);
   w.document.close();w.print();
 };
+const TxForm=({mode,allItems,setAllItems,suppliers,currentUser,addLog,toast,txList,setTxList,sheetKey})=>{
   const ef=()=>({tgl:tod(),ref:"",supplier:"",tujuan:"",noSJ:"",platNo:"",jenisKendaraan:"",driver:"",catatan:"",shift:"Pagi (06-14)",chef:"",qc:"Lulus",totalHPP:""});
   const [form,setForm]=useState(ef());
   const [rows,setRows]=useState([]);
